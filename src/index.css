@@ -1641,6 +1641,18 @@ h1.playlist-title-editable:focus-visible {
   margin: 0;
   font-size: 1.05rem;
 }
+.library-roots-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.library-root-scan-line {
+  margin-top: 0.25rem;
+}
+
 .btn.danger,
 .btn.ghost.danger {
   color: var(--danger);

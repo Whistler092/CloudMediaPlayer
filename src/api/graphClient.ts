@@ -1,5 +1,23 @@
 import type { GraphDriveItem, GraphListResponse } from './graphTypes'
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+/** Retry-After en segundos o fecha HTTP; devuelve ms a esperar o null. */
+function parseRetryAfterMs(header: string | null): number | null {
+  if (!header) return null
+  const s = header.trim()
+  if (/^\d+$/.test(s)) return parseInt(s, 10) * 1000
+  const t = Date.parse(s)
+  if (!Number.isNaN(t)) return Math.max(0, t - Date.now())
+  return null
+}
+
+/**
+ * Petición Graph con reintentos ante **429** (throttling). Importante cuando
+ * hay varios escaneos de raíz en paralelo (`LibraryPage`).
+ */
 export async function graphRequest(
   accessToken: string,
   pathOrUrl: string,
@@ -8,13 +26,23 @@ export async function graphRequest(
   const url = pathOrUrl.startsWith('http')
     ? pathOrUrl
     : `https://graph.microsoft.com/v1.0${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`
-  return fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      ...(init?.headers ?? {}),
-    },
-  })
+  const maxAttempts = 5
+  let last: Response | undefined
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    last = await fetch(url, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...(init?.headers ?? {}),
+      },
+    })
+    if (last.status !== 429) return last
+    if (attempt === maxAttempts - 1) return last
+    const fromHeader = parseRetryAfterMs(last.headers.get('Retry-After'))
+    const backoff = fromHeader ?? Math.min(10_000, 500 * 2 ** attempt)
+    await sleep(backoff)
+  }
+  return last!
 }
 
 export async function graphJson<T>(

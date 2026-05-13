@@ -1,22 +1,30 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getDocs,
   limit,
   orderBy,
   query,
+  setDoc,
   startAfter,
+  updateDoc,
+  serverTimestamp,
   type QueryDocumentSnapshot,
   type QuerySnapshot,
 } from 'firebase/firestore'
 import { getFirebase } from '../lib/firebase'
 import { clearIndexedLibrary } from '../lib/clearIndexedLibrary'
+import { runWithConcurrency } from '../lib/runWithConcurrency'
+import { formatScanDuration } from '../lib/formatScanDuration'
 import { useFirebaseUser } from '../hooks/useFirebaseUser'
+import { useGraphAccessToken } from '../hooks/useGraphAccessToken'
 import { isFirebaseConfigured } from '../config/env'
-import { userLibRootsCol, userLibTracksCol } from '../firestore/paths'
+import { userLibRootDoc, userLibRootsCol, userLibTracksCol } from '../firestore/paths'
 import type { LibraryRootDoc, LibraryTrackDoc } from '../types/firestore'
 import { usePlayer } from '../player/PlayerContext'
 import type { PlayerTrackRef } from '../types/player'
 import { filterIndexedTracks } from '../lib/indexedTrackSearch'
+import { scanDriveFolder } from '../scan/scanDriveFolder'
+import { clearScanCheckpoint } from '../scan/checkpointDb'
 
 type TrackRow = LibraryTrackDoc & { id: string }
 
@@ -25,6 +33,8 @@ type SortDir = 'asc' | 'desc'
 
 const FIRESTORE_PAGE = 500
 const UI_PAGE_SIZE = 120
+/** Máximo de raíces escaneándose a la vez (Graph / throttling). */
+const PARALLEL_LIBRARY_SCAN_ROOTS = 3
 
 function compareLocale(a: string, b: string, dir: SortDir): number {
   const sign = dir === 'asc' ? 1 : -1
@@ -128,8 +138,10 @@ function LibrarySkeleton() {
 
 export function LibraryPage() {
   const { firebaseUid, firebaseReady } = useFirebaseUser()
+  const acquireToken = useGraphAccessToken()
   const fb = getFirebase()
   const player = usePlayer()
+  const bulkScanAbortRef = useRef<AbortController | null>(null)
   const [tracks, setTracks] = useState<TrackRow[]>([])
   const [roots, setRoots] = useState<{ id: string; data: LibraryRootDoc }[]>([])
   const [filter, setFilter] = useState('')
@@ -138,6 +150,8 @@ export function LibraryPage() {
   const [loading, setLoading] = useState(true)
   const [loadProgress, setLoadProgress] = useState<string | null>(null)
   const [clearing, setClearing] = useState(false)
+  const [parallelScanning, setParallelScanning] = useState(false)
+  const [rootScanLines, setRootScanLines] = useState<Record<string, string>>({})
   const [uiPage, setUiPage] = useState(0)
 
   const loadData = useCallback(async () => {
@@ -207,6 +221,101 @@ export function LibraryPage() {
       setClearing(false)
     }
   }
+
+  const cancelParallelLibraryScans = useCallback(() => {
+    bulkScanAbortRef.current?.abort()
+  }, [])
+
+  const runParallelLibraryRescan = useCallback(async () => {
+    if (!fb || !firebaseUid || roots.length === 0) return
+    const candidates = roots.filter((r) => r.data.scanStatus !== 'running')
+    if (candidates.length === 0) {
+      window.alert(
+        'Todas las raíces figuran como «running». Si un escaneo quedó colgado, corrige el estado en Firestore o espera a que termine.',
+      )
+      return
+    }
+    if (
+      !window.confirm(
+        `Reescanear ${candidates.length} carpeta(s) en paralelo (hasta ${PARALLEL_LIBRARY_SCAN_ROOTS} a la vez). ` +
+          'Puede tardar y aumentar el uso de la API de OneDrive.',
+      )
+    ) {
+      return
+    }
+    bulkScanAbortRef.current?.abort()
+    const bulkAc = new AbortController()
+    bulkScanAbortRef.current = bulkAc
+    setParallelScanning(true)
+    setRootScanLines({})
+
+    const tasks = candidates.map(
+      (root) => async () => {
+        const rootRef = userLibRootDoc(fb.db, firebaseUid, root.id)
+        const scanKey = `${firebaseUid}:${root.id}`
+        await clearScanCheckpoint(scanKey)
+        await setDoc(
+          rootRef,
+          {
+            folderDriveItemId: root.data.folderDriveItemId ?? root.id,
+            displayPath: root.data.displayPath,
+            recursive: root.data.recursive,
+            scanStatus: 'running',
+            indexedTrackCount: 0,
+            lastScanStartedAt: serverTimestamp(),
+            errorMessage: null,
+          },
+          { merge: true },
+        )
+        const wall = performance.now()
+        try {
+          const { indexedTrackCount, elapsedMs } = await scanDriveFolder({
+            getToken: acquireToken,
+            firestore: fb.db,
+            firebaseUid,
+            rootFolderId: root.id,
+            displayPath: root.data.displayPath,
+            recursive: root.data.recursive,
+            onProgress: (n, d) => {
+              setRootScanLines((prev) => ({ ...prev, [root.id]: `${n} pistas — ${d}` }))
+            },
+            signal: bulkAc.signal,
+          })
+          const aborted = bulkAc.signal.aborted
+          await updateDoc(rootRef, {
+            scanStatus: aborted ? 'cancelled' : 'completed',
+            indexedTrackCount,
+            lastScanCompletedAt: serverTimestamp(),
+            lastScanDurationMs: elapsedMs,
+          })
+          setRootScanLines((prev) => ({
+            ...prev,
+            [root.id]: `${indexedTrackCount} pistas — ${aborted ? 'cancelado' : 'listo'} en ${formatScanDuration(elapsedMs)}`,
+          }))
+        } catch (e) {
+          await updateDoc(rootRef, {
+            scanStatus: 'error',
+            errorMessage: e instanceof Error ? e.message : 'Error desconocido',
+            lastScanCompletedAt: serverTimestamp(),
+            lastScanDurationMs: Math.round(performance.now() - wall),
+          })
+          setRootScanLines((prev) => ({
+            ...prev,
+            [root.id]: `Error: ${e instanceof Error ? e.message : 'fallo'}`,
+          }))
+        }
+      },
+    )
+
+    try {
+      await runWithConcurrency(tasks, PARALLEL_LIBRARY_SCAN_ROOTS)
+    } finally {
+      setParallelScanning(false)
+      bulkScanAbortRef.current = null
+      setRootScanLines({})
+      await loadData()
+    }
+  }, [fb, firebaseUid, roots, acquireToken, loadData])
 
   const filtered = useMemo(() => filterIndexedTracks(tracks, filter), [tracks, filter])
 
@@ -287,21 +396,47 @@ export function LibraryPage() {
       <section className="card">
         <div className="card-head">
           <h2>Raíces escaneadas</h2>
-          <button
-            type="button"
-            className="btn sm ghost danger"
-            disabled={clearing || loading || (roots.length === 0 && tracks.length === 0)}
-            onClick={() => void handleClearIndex()}
-          >
-            {clearing ? 'Borrando…' : 'Eliminar índice'}
-          </button>
+          <div className="library-roots-toolbar">
+            <button
+              type="button"
+              className="btn sm primary"
+              disabled={loading || parallelScanning || roots.length === 0}
+              onClick={() => void runParallelLibraryRescan()}
+              title={`Hasta ${PARALLEL_LIBRARY_SCAN_ROOTS} escaneos simultáneos; omite raíces ya en «running»`}
+            >
+              {parallelScanning ? 'Escaneando…' : 'Reescanear todas (paralelo)'}
+            </button>
+            {parallelScanning ? (
+              <button type="button" className="btn sm ghost" onClick={cancelParallelLibraryScans}>
+                Cancelar escaneos
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn sm ghost danger"
+              disabled={clearing || loading || parallelScanning || (roots.length === 0 && tracks.length === 0)}
+              onClick={() => void handleClearIndex()}
+            >
+              {clearing ? 'Borrando…' : 'Eliminar índice'}
+            </button>
+          </div>
         </div>
+        {parallelScanning ? (
+          <p className="muted small" style={{ marginBottom: '0.5rem' }} aria-live="polite">
+            Reescaneo en curso: hasta {PARALLEL_LIBRARY_SCAN_ROOTS} raíces en paralelo. Progreso por carpeta debajo.
+          </p>
+        ) : null}
         {roots.length === 0 && <p className="muted">Aún no hay carpetas indexadas. Escanea desde el Explorador.</p>}
         <ul className="roots">
           {roots.map((r) => (
             <li key={r.id}>
               <strong>{r.data.displayPath}</strong> — {r.data.indexedTrackCount} pistas —{' '}
               <span className="muted">{r.data.scanStatus}</span>
+              {rootScanLines[r.id] ? (
+                <div className="muted small library-root-scan-line" aria-live="polite">
+                  {rootScanLines[r.id]}
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>

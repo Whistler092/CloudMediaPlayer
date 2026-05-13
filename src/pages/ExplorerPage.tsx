@@ -15,16 +15,9 @@ import { scanDriveFolder, isAudioItem } from '../scan/scanDriveFolder'
 import { clearScanCheckpoint } from '../scan/checkpointDb'
 import { usePlayer } from '../player/PlayerContext'
 import type { PlayerTrackRef } from '../types/player'
+import { formatScanDuration } from '../lib/formatScanDuration'
 
 type Crumb = { id: string; name: string }
-
-function formatScanDuration(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000))
-  if (s < 60) return `${s} s`
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  return r ? `${m} min ${r} s` : `${m} min`
-}
 
 function ExplorerTableSkeleton() {
   return (
