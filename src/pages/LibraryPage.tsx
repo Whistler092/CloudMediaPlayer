@@ -68,6 +68,21 @@ function sortTracks(rows: TrackRow[], key: SortKey, dir: SortDir): TrackRow[] {
   return list
 }
 
+function LibrarySkeleton() {
+  return (
+    <div className="tbl-wrap" aria-busy="true" aria-label="Cargando biblioteca">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="skeleton-row">
+          <div className="skeleton-line skeleton-block short" />
+          <div className="skeleton-line skeleton-block" />
+          <div className="skeleton-line skeleton-block short" />
+          <div className="skeleton-line skeleton-block short" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function LibraryPage() {
   const { firebaseUid, firebaseReady } = useFirebaseUser()
   const fb = getFirebase()
@@ -103,7 +118,9 @@ export function LibraryPage() {
   }, [fb, firebaseUid, firebaseReady])
 
   useEffect(() => {
-    void loadData()
+    queueMicrotask(() => {
+      void loadData()
+    })
   }, [loadData])
 
   const handleClearIndex = async () => {
@@ -154,15 +171,34 @@ export function LibraryPage() {
   })
 
   if (!isFirebaseConfigured()) {
-    return <p className="hint">Configura Firebase en .env para ver la biblioteca indexada.</p>
+    return (
+      <div className="page library">
+        <h1>Biblioteca</h1>
+        <div className="empty-state">
+          <div className="empty-state-icon">◎</div>
+          <h2>Firebase no configurado</h2>
+          <p>Añade las variables <code>VITE_FIREBASE_*</code> en <code>.env</code> para ver el índice.</p>
+        </div>
+      </div>
+    )
   }
   if (!firebaseReady || !firebaseUid) {
-    return <p className="hint">Esperando autenticación Firebase…</p>
+    return (
+      <div className="page library">
+        <h1>Biblioteca</h1>
+        <div className="empty-state">
+          <div className="empty-state-icon">⋯</div>
+          <h2>Conectando…</h2>
+          <p>Esperando autenticación Firebase anónima.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="page library">
-      <h1>Biblioteca (índice)</h1>
+      <h1>Biblioteca</h1>
+      <p className="page-lead">Pistas indexadas desde OneDrive. Ordena, busca y reproduce.</p>
       <section className="card">
         <div className="card-head">
           <h2>Raíces escaneadas</h2>
@@ -175,7 +211,7 @@ export function LibraryPage() {
             {clearing ? 'Borrando…' : 'Eliminar índice'}
           </button>
         </div>
-        {roots.length === 0 && <p className="muted">Aún no hay carpetas indexadas.</p>}
+        {roots.length === 0 && <p className="muted">Aún no hay carpetas indexadas. Escanea desde el Explorador.</p>}
         <ul className="roots">
           {roots.map((r) => (
             <li key={r.id}>
@@ -185,7 +221,7 @@ export function LibraryPage() {
           ))}
         </ul>
       </section>
-      <div className="toolbar wrap">
+      <div className="toolbar toolbar-sticky wrap">
         <input
           type="search"
           placeholder="Buscar por nombre, carpeta, artista o álbum…"
@@ -219,40 +255,53 @@ export function LibraryPage() {
         </label>
       </div>
       <p className="hint small">
-        Artista y álbum vienen de Microsoft Graph al indexar (metadatos del archivo). La columna{' '}
-        <strong>Carpeta</strong> se rellena en escaneos nuevos; para pistas antiguas, vuelve a escanear la raíz.
+        Artista y álbum vienen de Microsoft Graph al indexar. <strong>Carpeta</strong> en escaneos recientes; vuelve a
+        escanear para pistas antiguas.
       </p>
-      {loading && <p>Cargando…</p>}
-      {!loading && (
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>Carpeta</th>
-              <th>Nombre</th>
-              <th>Artista</th>
-              <th>Álbum</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((t) => (
-              <tr key={t.id}>
-                <td className="muted small">{t.folderPath?.trim() || '—'}</td>
-                <td>{t.name}</td>
-                <td>{t.audioArtist ?? '—'}</td>
-                <td>{t.audioAlbum ?? '—'}</td>
-                <td className="actions">
-                  <button type="button" className="btn sm" onClick={() => player.playSingle(toRef(t))}>
-                    Reproducir
-                  </button>
-                  <button type="button" className="btn sm ghost" onClick={() => player.enqueue(toRef(t))}>
-                    Cola
-                  </button>
-                </td>
+      {loading && <LibrarySkeleton />}
+      {!loading && sorted.length === 0 && (
+        <div className="empty-state">
+          <div className="empty-state-icon">♪</div>
+          <h2>Sin pistas que mostrar</h2>
+          <p>
+            {tracks.length === 0
+              ? 'Indexa una carpeta desde el Explorador para llenar tu biblioteca.'
+              : 'Ningún resultado con este filtro. Prueba otra búsqueda.'}
+          </p>
+        </div>
+      )}
+      {!loading && sorted.length > 0 && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Carpeta</th>
+                <th>Nombre</th>
+                <th>Artista</th>
+                <th>Álbum</th>
+                <th />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sorted.map((t) => (
+                <tr key={t.id}>
+                  <td className="muted small">{t.folderPath?.trim() || '—'}</td>
+                  <td>{t.name}</td>
+                  <td>{t.audioArtist ?? '—'}</td>
+                  <td>{t.audioAlbum ?? '—'}</td>
+                  <td className="actions">
+                    <button type="button" className="btn sm" onClick={() => player.playSingle(toRef(t))}>
+                      Reproducir
+                    </button>
+                    <button type="button" className="btn sm ghost" onClick={() => player.enqueue(toRef(t))}>
+                      Cola
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )

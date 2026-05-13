@@ -18,6 +18,19 @@ import type { PlayerTrackRef } from '../types/player'
 
 type Crumb = { id: string; name: string }
 
+function ExplorerTableSkeleton() {
+  return (
+    <div className="tbl-wrap" aria-busy="true" aria-label="Cargando carpeta">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="skeleton-row">
+          <div className="skeleton-line skeleton-block" />
+          <div className="skeleton-line skeleton-block short" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function ExplorerPage() {
   const acquireToken = useGraphAccessToken()
   const { firebaseUid, firebaseReady } = useFirebaseUser()
@@ -158,8 +171,9 @@ export function ExplorerPage() {
 
   return (
     <div className="page explorer">
-      <h1>Explorador OneDrive</h1>
-      <nav className="breadcrumb" aria-label="Ruta">
+      <h1>Explorador</h1>
+      <p className="page-lead">Navega por OneDrive, reproduce al vuelo o indexa carpetas para tu biblioteca.</p>
+      <nav className="breadcrumb breadcrumb--retro" aria-label="Ruta">
         {breadcrumb.map((c, i) => (
           <span key={c.id}>
             {i > 0 ? <span className="bc-sep"> / </span> : null}
@@ -170,74 +184,87 @@ export function ExplorerPage() {
         ))}
       </nav>
 
-      <div className="toolbar">
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={recursiveScan}
-            onChange={(e) => setRecursiveScan(e.target.checked)}
-            disabled={scanning}
-          />
-          Incluir subcarpetas al escanear
-        </label>
-        <button
-          type="button"
-          className="btn primary"
-          disabled={!canFirebase || scanning || !folderId}
-          onClick={() => void startScan()}
-        >
-          Escanear esta carpeta
-        </button>
-        {scanning && (
-          <button type="button" className="btn ghost" onClick={stopScan}>
-            Cancelar escaneo
+      <div className="scan-panel">
+        <div className="toolbar" style={{ marginTop: 0 }}>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={recursiveScan}
+              onChange={(e) => setRecursiveScan(e.target.checked)}
+              disabled={scanning}
+            />
+            Incluir subcarpetas al escanear
+          </label>
+          <button
+            type="button"
+            className="btn primary"
+            disabled={!canFirebase || scanning || !folderId}
+            onClick={() => void startScan()}
+          >
+            Escanear esta carpeta
           </button>
+          {scanning && (
+            <button type="button" className="btn ghost" onClick={stopScan}>
+              Cancelar escaneo
+            </button>
+          )}
+        </div>
+        {scanning && <p className="status">{scanMsg}</p>}
+        {!canFirebase && (
+          <p className="hint" style={{ marginBottom: 0 }}>
+            Conecta Firebase y espera la autenticación anónima para indexar.
+          </p>
         )}
       </div>
-      {scanning && <p className="status">{scanMsg}</p>}
-      {!canFirebase && (
-        <p className="hint">Conecta Firebase y espera la autenticación anónima para indexar.</p>
-      )}
 
-      {loading && <p>Cargando…</p>}
-      {!loading && (
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Tipo</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it) => (
-              <tr key={it.id}>
-                <td>
-                  {it.folder ? (
-                    <button type="button" className="linkish" onClick={() => enterFolder(it)}>
-                      {it.name}
-                    </button>
-                  ) : (
-                    it.name
-                  )}
-                </td>
-                <td>{it.folder ? 'Carpeta' : it.file?.mimeType ?? 'Archivo'}</td>
-                <td className="actions">
-                  {isAudioItem(it) && (
-                    <>
-                      <button type="button" className="btn sm" onClick={() => player.playSingle(toTrackRef(it))}>
-                        Reproducir
-                      </button>
-                      <button type="button" className="btn sm ghost" onClick={() => player.enqueue(toTrackRef(it))}>
-                        Cola
-                      </button>
-                    </>
-                  )}
-                </td>
+      {loading && <ExplorerTableSkeleton />}
+      {!loading && items.length === 0 && (
+        <div className="empty-state">
+          <div className="empty-state-icon">📂</div>
+          <h2>Carpeta vacía</h2>
+          <p>No hay elementos en esta ubicación.</p>
+        </div>
+      )}
+      {!loading && items.length > 0 && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Tipo</th>
+                <th />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((it) => (
+                <tr key={it.id} className={it.folder ? 'row-folder' : undefined}>
+                  <td>
+                    {it.folder ? (
+                      <button type="button" className="linkish" onClick={() => enterFolder(it)}>
+                        {it.name}
+                      </button>
+                    ) : (
+                      it.name
+                    )}
+                  </td>
+                  <td>{it.folder ? 'Carpeta' : it.file?.mimeType ?? 'Archivo'}</td>
+                  <td className="actions">
+                    {isAudioItem(it) && (
+                      <>
+                        <button type="button" className="btn sm" onClick={() => player.playSingle(toTrackRef(it))}>
+                          Reproducir
+                        </button>
+                        <button type="button" className="btn sm ghost" onClick={() => player.enqueue(toTrackRef(it))}>
+                          Cola
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {nextLink && (
         <button type="button" className="btn" disabled={loadingMore} onClick={() => void loadMore()}>

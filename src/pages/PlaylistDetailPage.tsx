@@ -10,6 +10,23 @@ import type { PlayerTrackRef } from '../types/player'
 
 type Row = { id: string; name: string }
 
+function PlaylistDetailSkeleton() {
+  return (
+    <div className="page playlist-detail" aria-busy="true" aria-label="Cargando playlist">
+      <div className="skeleton-line skeleton-block short" style={{ marginBottom: '1rem' }} />
+      <div className="skeleton-line skeleton-block" style={{ maxWidth: 240, height: 28, marginBottom: '1.5rem' }} />
+      <div className="tbl-wrap">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="skeleton-row">
+            <div className="skeleton-line skeleton-block short" />
+            <div className="skeleton-line skeleton-block" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function PlaylistDetailPage() {
   const { playlistId } = useParams<{ playlistId: string }>()
   const { firebaseUid, firebaseReady } = useFirebaseUser()
@@ -104,68 +121,87 @@ export function PlaylistDetailPage() {
     player.playQueue(refs, 0)
   }
 
-  if (!playlistId) return <p>Playlist no encontrada.</p>
-  if (loading) return <p>Cargando…</p>
+  if (!playlistId) return <p className="hint">Playlist no encontrada.</p>
+  if (loading) return <PlaylistDetailSkeleton />
   if (!playlist) {
     return (
-      <p>
-        No existe esta playlist. <Link to="/playlists">Volver</Link>
-      </p>
+      <div className="page playlist-detail">
+        <div className="empty-state">
+          <h2>No existe esta playlist</h2>
+          <p>
+            <Link to="/playlists">Volver a Playlists</Link>
+          </p>
+        </div>
+      </div>
     )
   }
 
   return (
     <div className="page playlist-detail">
-      <p>
-        <Link to="/playlists">← Playlists</Link>
-      </p>
+      <Link to="/playlists" className="back-link">
+        ← Playlists
+      </Link>
       <h1>{playlist.name}</h1>
+      <p className="page-lead">Ordena los temas o reproduce la lista completa.</p>
       <div className="toolbar">
         <button type="button" className="btn primary" disabled={!rows.length} onClick={playAll}>
           Reproducir todo
         </button>
       </div>
-      <h2>Temas</h2>
-      <table className="tbl">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Nombre / id OneDrive</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={`${r.id}-${i}`}>
-              <td>{i + 1}</td>
-              <td>{r.name}</td>
-              <td className="actions">
-                <button type="button" className="btn sm ghost" disabled={i === 0} onClick={() => move(i, -1)}>
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  className="btn sm ghost"
-                  disabled={i === rows.length - 1}
-                  onClick={() => move(i, 1)}
-                >
-                  ↓
-                </button>
-                <button type="button" className="btn sm" onClick={() => player.playSingle({ id: r.id, name: r.name })}>
-                  ▶
-                </button>
-                <button type="button" className="btn sm ghost" onClick={() => removeAt(i)}>
-                  Quitar
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <h3>Añadir por id de OneDrive</h3>
+      <h2 style={{ fontSize: '1.05rem', marginTop: '1.5rem' }}>Temas</h2>
+      {rows.length === 0 ? (
+        <div className="empty-state">
+          <p>Esta playlist está vacía. Añade ids de OneDrive abajo o desde la biblioteca.</p>
+        </div>
+      ) : (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Nombre / id OneDrive</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={`${r.id}-${i}`}>
+                  <td>{i + 1}</td>
+                  <td>{r.name}</td>
+                  <td className="actions">
+                    <button type="button" className="btn sm ghost" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Subir">
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="btn sm ghost"
+                      disabled={i === rows.length - 1}
+                      onClick={() => move(i, 1)}
+                      aria-label="Bajar"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      className="btn sm"
+                      onClick={() => player.playSingle({ id: r.id, name: r.name })}
+                      aria-label={`Reproducir ${r.name}`}
+                    >
+                      ▶
+                    </button>
+                    <button type="button" className="btn sm ghost" onClick={() => removeAt(i)}>
+                      Quitar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <h3 style={{ fontSize: '1rem', marginTop: '2rem' }}>Añadir por id de OneDrive</h3>
       <p className="muted small">
-        Puedes copiar el id del archivo desde la biblioteca indexada o desde Graph. Opcionalmente indica un nombre
-        para mostrar hasta que exista en el índice.
+        Copia el id del archivo desde la biblioteca indexada o Graph. El nombre se resuelve si ya está indexado.
       </p>
       <div className="toolbar wrap">
         <input className="input" placeholder="driveItemId" value={newId} onChange={(e) => setNewId(e.target.value)} />

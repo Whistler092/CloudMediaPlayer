@@ -13,8 +13,8 @@ export default defineConfig({
         name: 'Cloud Media Player',
         short_name: 'CloudMedia',
         description: 'Reproductor de música con OneDrive y Firebase',
-        theme_color: '#171b22',
-        background_color: '#0f1115',
+        theme_color: '#12151b',
+        background_color: '#0a0c0f',
         display: 'standalone',
         start_url: '/',
         icons: [

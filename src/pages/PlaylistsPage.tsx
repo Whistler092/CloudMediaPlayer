@@ -15,6 +15,19 @@ import { isFirebaseConfigured } from '../config/env'
 import { userPlaylistsCol } from '../firestore/paths'
 import type { PlaylistDoc } from '../types/firestore'
 
+function PlaylistsSkeleton() {
+  return (
+    <div className="plist" aria-busy="true" aria-label="Cargando playlists">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="plist-row" style={{ borderStyle: 'dashed' }}>
+          <div className="skeleton-line skeleton-block" style={{ flex: 1 }} />
+          <div className="skeleton-line skeleton-block short" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function PlaylistsPage() {
   const { firebaseUid, firebaseReady } = useFirebaseUser()
   const fb = getFirebase()
@@ -65,15 +78,34 @@ export function PlaylistsPage() {
   }
 
   if (!isFirebaseConfigured()) {
-    return <p className="hint">Configura Firebase para usar playlists.</p>
+    return (
+      <div className="page playlists">
+        <h1>Playlists</h1>
+        <div className="empty-state">
+          <div className="empty-state-icon">◎</div>
+          <h2>Firebase no configurado</h2>
+          <p>Configura <code>VITE_FIREBASE_*</code> en <code>.env</code> para usar playlists.</p>
+        </div>
+      </div>
+    )
   }
   if (!firebaseReady || !firebaseUid) {
-    return <p className="hint">Esperando autenticación Firebase…</p>
+    return (
+      <div className="page playlists">
+        <h1>Playlists</h1>
+        <div className="empty-state">
+          <div className="empty-state-icon">⋯</div>
+          <h2>Conectando…</h2>
+          <p>Esperando autenticación Firebase.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="page playlists">
       <h1>Playlists</h1>
+      <p className="page-lead">Colecciones guardadas en la nube. Abre una lista para ordenar y reproducir.</p>
       <div className="toolbar">
         <input
           className="input"
@@ -85,18 +117,27 @@ export function PlaylistsPage() {
           Crear
         </button>
       </div>
-      {loading && <p>Cargando…</p>}
-      <ul className="plist">
-        {items.map((p) => (
-          <li key={p.id} className="plist-row">
-            <Link to={`/playlists/${p.id}`}>{p.data.name}</Link>
-            <span className="muted">{p.data.orderedTrackIds.length} temas</span>
-            <button type="button" className="btn sm ghost" onClick={() => void remove(p.id)}>
-              Eliminar
-            </button>
-          </li>
-        ))}
-      </ul>
+      {loading && <PlaylistsSkeleton />}
+      {!loading && items.length === 0 && (
+        <div className="empty-state">
+          <div className="empty-state-icon">♫</div>
+          <h2>Aún no hay playlists</h2>
+          <p>Crea una arriba y añade pistas desde el detalle.</p>
+        </div>
+      )}
+      {!loading && items.length > 0 && (
+        <ul className="plist">
+          {items.map((p) => (
+            <li key={p.id} className="plist-row">
+              <Link to={`/playlists/${p.id}`}>{p.data.name}</Link>
+              <span className="muted playlist-card-meta">{p.data.orderedTrackIds.length} temas</span>
+              <button type="button" className="btn sm ghost" onClick={() => void remove(p.id)}>
+                Eliminar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

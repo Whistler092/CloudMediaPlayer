@@ -30,7 +30,7 @@ No necesitas conocer código; sí debes respetar que existen **dos “identidade
 ## ARQUITECTURA DE NAVEGACIÓN
 
 - **Ruta pública:** `/login` — solo usuarios no autenticados con MSAL (o mensaje si falta configuración MSAL).
-- **Rutas protegidas (requieren MSAL):** envueltas en layout con **cabecera global** y **barra de reproductor** cuando aplique.
+- **Rutas protegidas (requieren MSAL):** layout con **barra lateral** (navegación), área de contenido, **banner** opcional si falta Firebase, y **barra de reproductor** fija inferior cuando hay cola o pista.
   - `/` redirige a `/explorer`.
   - **`/explorer`** — Explorador OneDrive (árbol por “carpeta actual”, no es un tree view persistente: breadcrumb + lista de hijos).
   - **`/library`** — Biblioteca indexada (Firestore): pistas ya escaneadas + metadatos.
@@ -38,12 +38,12 @@ No necesitas conocer código; sí debes respetar que existen **dos “identidade
   - **`/playlists/:playlistId`** — Detalle de una playlist: orden, reproducción, edición rudimentaria.
 - Cualquier otra ruta desconocida redirige a `/explorer`.
 
-**Cabecera (App shell):**
+**Barra lateral (App shell):**
 
 - Marca / enlace a inicio (`/explorer`).
-- Navegación principal: **Explorador**, **Biblioteca**, **Playlists**.
-- Botón **Cerrar sesión Microsoft** (logout popup MSAL hacia `postLogoutRedirectUri` en origen).
-- **Banner de aviso** si Firebase no está configurado: indica que la biblioteca indexada y playlists no estarán disponibles (la app sigue pudiendo explorar OneDrive y reproducir desde Graph si hay token).
+- Navegación: **Explorador**, **Biblioteca**, **Playlists** (iconos + texto; en móvil menú hamburguesa).
+- Cuenta Microsoft (texto breve) y **Cerrar sesión**.
+- **Banner** si Firebase no está configurado.
 
 ## PANTALLA: LOGIN (`/login`)
 
@@ -170,9 +170,20 @@ No necesitas conocer código; sí debes respetar que existen **dos “identidade
 - No cambiar permisos Graph (User.Read, Files.Read, offline_access) salvo documentación aparte.
 - No sustituir MSAL por otro proveedor en este prompt.
 
-## REFERENCIA VISUAL ACTUAL (SOLO CONTEXTO, LIBRE DE CAMBIAR)
+## PRINCIPIOS VISUALES (IMPLEMENTACIÓN EN REPO)
 
-Tema oscuro aproximado: fondo `#0f1115`, superficies `#171b22`, texto claro, acentos tipo Material/Workspace (`#8ab4f8` en enlaces). Tipografía base sistema (`Segoe UI`, system-ui). Layout: cabecera fija, contenido con `max-width` ~1100px centrado, padding inferior extra para no tapar contenido con la barra del reproductor.
+La app usa **tokens CSS** en [`src/index.css`](src/index.css) (`:root`): `--bg`, `--surface`, `--accent` (verde tipo Spotify), `--text` / `--text-muted` (crema / gris cálido), `--danger`, `--sidebar-width`, `--player-height`, etc.
+
+- **Tipografías:** `Outfit` (UI) y `DM Serif Display` (marca “Cloud Media”), cargadas desde Google Fonts en `index.html`.
+- **Shell:** barra lateral fija en escritorio (`AppShell`), navegación vertical con iconos; en `<768px` menú hamburguesa + overlay.
+- **Reproductor:** barra inferior fija a ancho completo, tres zonas (carátula con iniciales + metadatos | controles | reserva), barra de progreso a ancho completo debajo; clase `app-root--player` añade padding inferior al contenido cuando hay cola.
+- **Componentes:** tablas con `.tbl-wrap`, filas alternas y hover sutil; tarjetas de playlist (`.plist-row`); estados vacíos `.empty-state` y carga `.skeleton-*`.
+
+Mantén coherencia con estos tokens si añades pantallas nuevas.
+
+## REFERENCIA VISUAL (CONTEXTO)
+
+Anteriormente: topbar horizontal y grises fríos. **Actual:** tema “Spotify retro” (fondo carbón verdoso, acento `#1ed760`, bordes `--border`). El detalle exacto vive en `index.html` (fuentes + `theme-color`) y `src/index.css`.
 
 ---
 
