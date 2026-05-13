@@ -10,6 +10,8 @@ export type LibraryRootDoc = {
   indexedTrackCount: number
   lastScanStartedAt?: Timestamp
   lastScanCompletedAt?: Timestamp
+  /** Duración del último `scanDriveFolder` (ms), medida en el cliente. */
+  lastScanDurationMs?: number
   errorMessage?: string
 }
 
@@ -27,6 +29,8 @@ export type LibraryTrackDoc = {
   audioArtist?: string | null
   audioAlbum?: string | null
   audioDurationMs?: number | null
+  /** Última escritura en índice (p. ej. escaneo); usado para “recientes”. */
+  updatedAt?: Timestamp
 }
 
 export type PlaylistDoc = {

@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getDocs, limit, orderBy, query } from 'firebase/firestore'
+import {
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  startAfter,
+  type QueryDocumentSnapshot,
+  type QuerySnapshot,
+} from 'firebase/firestore'
 import { getFirebase } from '../lib/firebase'
 import { clearIndexedLibrary } from '../lib/clearIndexedLibrary'
 import { useFirebaseUser } from '../hooks/useFirebaseUser'
@@ -8,11 +16,15 @@ import { userLibRootsCol, userLibTracksCol } from '../firestore/paths'
 import type { LibraryRootDoc, LibraryTrackDoc } from '../types/firestore'
 import { usePlayer } from '../player/PlayerContext'
 import type { PlayerTrackRef } from '../types/player'
+import { filterIndexedTracks } from '../lib/indexedTrackSearch'
 
 type TrackRow = LibraryTrackDoc & { id: string }
 
 type SortKey = 'name' | 'folderPath' | 'artist' | 'album'
 type SortDir = 'asc' | 'desc'
+
+const FIRESTORE_PAGE = 500
+const UI_PAGE_SIZE = 120
 
 function compareLocale(a: string, b: string, dir: SortDir): number {
   const sign = dir === 'asc' ? 1 : -1
@@ -68,6 +80,37 @@ function sortTracks(rows: TrackRow[], key: SortKey, dir: SortDir): TrackRow[] {
   return list
 }
 
+function IconPlay() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7L8 5z" />
+    </svg>
+  )
+}
+
+/** Cola + signo “+” (añadir al final), legible a tamaño pequeño. */
+function IconAddToQueue() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <line x1="4" y1="7" x2="14" y2="7" />
+      <line x1="4" y1="12" x2="12" y2="12" />
+      <line x1="4" y1="17" x2="10" y2="17" />
+      <circle cx="17.5" cy="12" r="4.25" fill="none" />
+      <path d="M17.5 10.2v3.6M15.7 12h3.6" strokeWidth="2" />
+    </svg>
+  )
+}
+
 function LibrarySkeleton() {
   return (
     <div className="tbl-wrap" aria-busy="true" aria-label="Cargando biblioteca">
@@ -93,28 +136,49 @@ export function LibraryPage() {
   const [sortKey, setSortKey] = useState<SortKey>('folderPath')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [loading, setLoading] = useState(true)
+  const [loadProgress, setLoadProgress] = useState<string | null>(null)
   const [clearing, setClearing] = useState(false)
+  const [uiPage, setUiPage] = useState(0)
 
   const loadData = useCallback(async () => {
     if (!fb || !firebaseUid || !firebaseReady) {
       setTracks([])
       setRoots([])
+      setLoadProgress(null)
       setLoading(false)
       return
     }
     setLoading(true)
-    const tq = query(userLibTracksCol(fb.db, firebaseUid), orderBy('name'), limit(500))
-    const tr = await getDocs(tq)
-    const rq = query(userLibRootsCol(fb.db, firebaseUid), orderBy('displayPath'), limit(50))
-    const rr = await getDocs(rq)
-    setTracks(
-      tr.docs.map((d) => {
-        const x = d.data() as LibraryTrackDoc
-        return { ...x, id: d.id }
-      }),
-    )
-    setRoots(rr.docs.map((d) => ({ id: d.id, data: d.data() as LibraryRootDoc })))
-    setLoading(false)
+    setLoadProgress('0 pistas')
+    const all: TrackRow[] = []
+    let last: QueryDocumentSnapshot | null = null
+    try {
+      while (true) {
+        const col = userLibTracksCol(fb.db, firebaseUid)
+        let snap: QuerySnapshot
+        if (last) {
+          snap = await getDocs(query(col, orderBy('name'), startAfter(last), limit(FIRESTORE_PAGE)))
+        } else {
+          snap = await getDocs(query(col, orderBy('name'), limit(FIRESTORE_PAGE)))
+        }
+        if (snap.empty) break
+        for (const d of snap.docs) {
+          const x = d.data() as LibraryTrackDoc
+          all.push({ ...x, id: d.id })
+        }
+        setLoadProgress(`${all.length} pistas…`)
+        last = snap.docs[snap.docs.length - 1]!
+        if (snap.docs.length < FIRESTORE_PAGE) break
+      }
+
+      const rq = query(userLibRootsCol(fb.db, firebaseUid), orderBy('displayPath'), limit(50))
+      const rr = await getDocs(rq)
+      setTracks(all)
+      setRoots(rr.docs.map((d) => ({ id: d.id, data: d.data() as LibraryRootDoc })))
+    } finally {
+      setLoadProgress(null)
+      setLoading(false)
+    }
   }, [fb, firebaseUid, firebaseReady])
 
   useEffect(() => {
@@ -144,24 +208,31 @@ export function LibraryPage() {
     }
   }
 
-  const filtered = useMemo(() => {
-    const f = filter.trim().toLowerCase()
-    if (!f) return tracks
-    return tracks.filter((t) => {
-      const folder = (t.folderPath ?? '').toLowerCase()
-      return (
-        t.name.toLowerCase().includes(f) ||
-        folder.includes(f) ||
-        (t.audioArtist && t.audioArtist.toLowerCase().includes(f)) ||
-        (t.audioAlbum && t.audioAlbum.toLowerCase().includes(f))
-      )
-    })
-  }, [tracks, filter])
+  const filtered = useMemo(() => filterIndexedTracks(tracks, filter), [tracks, filter])
 
   const sorted = useMemo(
     () => sortTracks(filtered, sortKey, sortDir),
     [filtered, sortKey, sortDir],
   )
+
+  useEffect(() => {
+    const pages = Math.max(1, Math.ceil(sorted.length / UI_PAGE_SIZE))
+    setUiPage((p) => Math.min(p, pages - 1))
+  }, [sorted.length])
+
+  const uiPageCount = Math.max(1, Math.ceil(sorted.length / UI_PAGE_SIZE))
+  const safeUiPage = Math.min(uiPage, uiPageCount - 1)
+  const pageSlice = useMemo(() => {
+    const start = safeUiPage * UI_PAGE_SIZE
+    return sorted.slice(start, start + UI_PAGE_SIZE)
+  }, [sorted, safeUiPage])
+
+  const rangeLabel = useMemo(() => {
+    if (sorted.length === 0) return null
+    const from = safeUiPage * UI_PAGE_SIZE + 1
+    const to = Math.min(sorted.length, (safeUiPage + 1) * UI_PAGE_SIZE)
+    return `${from}–${to}`
+  }, [sorted.length, safeUiPage])
 
   const toRef = (t: TrackRow): PlayerTrackRef => ({
     id: t.id,
@@ -170,6 +241,18 @@ export function LibraryPage() {
     album: t.audioAlbum ?? undefined,
   })
 
+  const addFilteredToQueue = useCallback(() => {
+    if (sorted.length === 0) return
+    player.enqueueMany(
+      sorted.map((t) => ({
+        id: t.id,
+        name: t.name,
+        artist: t.audioArtist ?? undefined,
+        album: t.audioAlbum ?? undefined,
+      })),
+    )
+  }, [player, sorted])
+
   if (!isFirebaseConfigured()) {
     return (
       <div className="page library">
@@ -177,7 +260,9 @@ export function LibraryPage() {
         <div className="empty-state">
           <div className="empty-state-icon">◎</div>
           <h2>Firebase no configurado</h2>
-          <p>Añade las variables <code>VITE_FIREBASE_*</code> en <code>.env</code> para ver el índice.</p>
+          <p>
+            Añade las variables <code>VITE_FIREBASE_*</code> en <code>.env</code> para ver el índice.
+          </p>
         </div>
       </div>
     )
@@ -254,11 +339,17 @@ export function LibraryPage() {
           </select>
         </label>
       </div>
-      <p className="hint small">
-        Artista y álbum vienen de Microsoft Graph al indexar. <strong>Carpeta</strong> en escaneos recientes; vuelve a
-        escanear para pistas antiguas.
-      </p>
-      {loading && <LibrarySkeleton />}
+
+      {loading && (
+        <>
+          {loadProgress ? (
+            <p className="muted small library-load-progress" aria-live="polite">
+              Cargando desde Firebase… {loadProgress}
+            </p>
+          ) : null}
+          <LibrarySkeleton />
+        </>
+      )}
       {!loading && sorted.length === 0 && (
         <div className="empty-state">
           <div className="empty-state-icon">♪</div>
@@ -271,37 +362,104 @@ export function LibraryPage() {
         </div>
       )}
       {!loading && sorted.length > 0 && (
-        <div className="tbl-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Carpeta</th>
-                <th>Nombre</th>
-                <th>Artista</th>
-                <th>Álbum</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((t) => (
-                <tr key={t.id}>
-                  <td className="muted small">{t.folderPath?.trim() || '—'}</td>
-                  <td>{t.name}</td>
-                  <td>{t.audioArtist ?? '—'}</td>
-                  <td>{t.audioAlbum ?? '—'}</td>
-                  <td className="actions">
-                    <button type="button" className="btn sm" onClick={() => player.playSingle(toRef(t))}>
-                      Reproducir
-                    </button>
-                    <button type="button" className="btn sm ghost" onClick={() => player.enqueue(toRef(t))}>
-                      Cola
-                    </button>
-                  </td>
+        <>
+          <div className="library-table-meta muted small">
+            {sorted.length} pista{sorted.length === 1 ? '' : 's'}
+            {rangeLabel ? ` · filas ${rangeLabel}` : ''} · {UI_PAGE_SIZE} por página
+          </div>
+          <div className="tbl-wrap library-tbl-wrap">
+            <table className="tbl library-tbl">
+              <thead>
+                <tr>
+                  <th className="col-folder">Carpeta</th>
+                  <th className="col-name">Nombre</th>
+                  <th className="col-meta">Artista</th>
+                  <th colSpan={2} className="library-th-album-actions">
+                    <div className="library-th-album-actions-inner">
+                      <span className="library-th-album-actions-label">Álbum</span>
+                      <button
+                        type="button"
+                        className="btn sm ghost library-add-all-queue"
+                        onClick={() => addFilteredToQueue()}
+                        title={`Agregar a la cola las ${sorted.length} pista${sorted.length === 1 ? '' : 's'} visibles (filtro + orden actual)`}
+                        aria-label={`Agregar a la cola las ${sorted.length} pistas filtradas`}
+                      >
+                        <IconAddToQueue />
+                        <span className="library-add-all-queue__text"></span>
+                      </button>
+                    </div>
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {pageSlice.map((t) => {
+                  const folder = t.folderPath?.trim() || ''
+                  return (
+                    <tr key={t.id}>
+                      <td className="col-folder muted small" title={folder || undefined}>
+                        {folder || '—'}
+                      </td>
+                      <td className="col-name" title={t.name}>
+                        {t.name}
+                      </td>
+                      <td className="col-meta" title={t.audioArtist ?? undefined}>
+                        {t.audioArtist?.trim() || '—'}
+                      </td>
+                      <td className="col-meta" title={t.audioAlbum ?? undefined}>
+                        {t.audioAlbum?.trim() || '—'}
+                      </td>
+                      <td className="col-actions">
+                        <div className="library-row-actions">
+                          <button
+                            type="button"
+                            className="btn-icon library-row-action"
+                            onClick={() => player.playSingle(toRef(t))}
+                            aria-label={`Reproducir ${t.name}`}
+                            title="Reproducir ahora"
+                          >
+                            <IconPlay />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-icon library-row-action"
+                            onClick={() => player.enqueue(toRef(t))}
+                            aria-label={`Añadir a la cola: ${t.name}`}
+                            title="Añadir a la cola de reproducción"
+                          >
+                            <IconAddToQueue />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {uiPageCount > 1 ? (
+            <nav className="library-pager" aria-label="Paginación de la tabla">
+              <button
+                type="button"
+                className="btn sm"
+                disabled={safeUiPage <= 0}
+                onClick={() => setUiPage((p) => Math.max(0, p - 1))}
+              >
+                Anterior
+              </button>
+              <span className="muted small">
+                Página {safeUiPage + 1} de {uiPageCount}
+              </span>
+              <button
+                type="button"
+                className="btn sm"
+                disabled={safeUiPage >= uiPageCount - 1}
+                onClick={() => setUiPage((p) => Math.min(uiPageCount - 1, p + 1))}
+              >
+                Siguiente
+              </button>
+            </nav>
+          ) : null}
+        </>
       )}
     </div>
   )

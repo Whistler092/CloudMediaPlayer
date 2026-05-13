@@ -6,6 +6,7 @@ import { LibraryPage } from './pages/LibraryPage'
 import { PlaylistsPage } from './pages/PlaylistsPage'
 import { PlaylistDetailPage } from './pages/PlaylistDetailPage'
 import { ProtectedMsal, AppShell } from './routes/AppShell'
+import { DevBrandLogosPage } from './pages/DevBrandLogosPage'
 
 function FirebaseLayout() {
   return (
@@ -20,6 +21,9 @@ export default function App() {
     <div className="app-viewport-fill">
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {import.meta.env.DEV ? (
+          <Route path="/__dev/brand-logos" element={<DevBrandLogosPage />} />
+        ) : null}
         <Route element={<ProtectedMsal />}>
           <Route element={<FirebaseLayout />}>
             <Route element={<AppShell />}>

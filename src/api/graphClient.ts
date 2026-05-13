@@ -42,13 +42,34 @@ export async function listDriveChildren(
   return graphJson<GraphListResponse<GraphDriveItem>>(accessToken, path)
 }
 
+/** IDs de ítem pueden incluir `!`; deben ir codificados en la ruta. */
+function driveItemPath(itemId: string, query?: string): string {
+  const enc = encodeURIComponent(itemId)
+  const q = query ? `?${query}` : ''
+  return `/me/drive/items/${enc}${q}`
+}
+
 export async function getDriveItem(
   accessToken: string,
   itemId: string,
 ): Promise<GraphDriveItem> {
+  return graphJson<GraphDriveItem>(accessToken, driveItemPath(itemId))
+}
+
+/**
+ * Metadatos (faceta `audio`) sin depender del payload completo.
+ * El reproductor sigue usando `getDriveItem` para incluir `downloadUrl`.
+ */
+export async function getDriveItemWithAudioSelect(
+  accessToken: string,
+  itemId: string,
+): Promise<GraphDriveItem> {
+  const sel = encodeURIComponent(
+    'id,name,file,folder,parentReference,size,lastModifiedDateTime,audio',
+  )
   return graphJson<GraphDriveItem>(
     accessToken,
-    `/me/drive/items/${itemId}`,
+    driveItemPath(itemId, `$select=${sel}`),
   )
 }
 

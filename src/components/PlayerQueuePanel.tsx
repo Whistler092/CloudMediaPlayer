@@ -1,6 +1,12 @@
 import { useCallback, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { addDoc, serverTimestamp } from 'firebase/firestore'
 import { usePlayer } from '../player/PlayerContext'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useFirebaseUser } from '../hooks/useFirebaseUser'
+import { getFirebase } from '../lib/firebase'
+import { isFirebaseConfigured } from '../config/env'
+import { userPlaylistsCol } from '../firestore/paths'
 import { PlayerTransport } from './PlayerTransport'
 
 const LS_KEY = 'queuePanelExpanded'
@@ -62,8 +68,12 @@ export type PlayerQueuePanelProps = {
 
 export function PlayerQueuePanel({ mobileQueueOpen, onMobileQueueOpenChange }: PlayerQueuePanelProps) {
   const p = usePlayer()
+  const navigate = useNavigate()
+  const { firebaseUid, firebaseReady } = useFirebaseUser()
+  const fb = getFirebase()
   const isMobile = useIsMobile()
   const [expanded, setExpanded] = useState(() => readExpanded())
+  const [savingPlaylist, setSavingPlaylist] = useState(false)
 
   const setExpandedPersist = useCallback((next: boolean) => {
     setExpanded(next)
@@ -101,6 +111,34 @@ export function PlayerQueuePanel({ mobileQueueOpen, onMobileQueueOpenChange }: P
   const clearWithConfirm = () => {
     if (!hasQueue) return
     if (window.confirm('¿Vaciar la cola de reproducción?')) p.clearQueue()
+  }
+
+  const canSavePlaylist =
+    isFirebaseConfigured() &&
+    firebaseReady &&
+    Boolean(firebaseUid && fb) &&
+    hasQueue &&
+    !savingPlaylist
+
+  const saveQueueAsPlaylist = async () => {
+    if (!canSavePlaylist || !fb || !firebaseUid) return
+    const suggested = `Cola ${new Date().toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })}`
+    const name = window.prompt('Nombre de la playlist', suggested)?.trim()
+    if (!name) return
+    setSavingPlaylist(true)
+    try {
+      const ref = await addDoc(userPlaylistsCol(fb.db, firebaseUid), {
+        name,
+        orderedTrackIds: p.queue.map((t) => t.id),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+      navigate(`/playlists/${ref.id}`)
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'No se pudo guardar la playlist')
+    } finally {
+      setSavingPlaylist(false)
+    }
   }
 
   const closeMobileDrawer = () => onMobileQueueOpenChange(false)
@@ -204,9 +242,24 @@ export function PlayerQueuePanel({ mobileQueueOpen, onMobileQueueOpenChange }: P
 
             {hasQueue ? (
               <div className="queue-panel-footer">
-                <button type="button" className="btn ghost sm" onClick={clearWithConfirm}>
-                  Vaciar cola
-                </button>
+                <div className="queue-panel-footer-actions">
+                  <button
+                    type="button"
+                    className="btn ghost sm"
+                    disabled={!canSavePlaylist}
+                    title={
+                      !isFirebaseConfigured() || !firebaseReady || !firebaseUid
+                        ? 'Inicia sesión en Firebase para guardar playlists'
+                        : undefined
+                    }
+                    onClick={() => void saveQueueAsPlaylist()}
+                  >
+                    {savingPlaylist ? 'Guardando…' : 'Guardar como playlist'}
+                  </button>
+                  <button type="button" className="btn ghost sm" onClick={clearWithConfirm}>
+                    Vaciar cola
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>

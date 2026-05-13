@@ -38,6 +38,7 @@ type Ctx = {
   playSingle: (t: PlayerTrackRef) => void
   playQueue: (tracks: PlayerTrackRef[], startIndex?: number) => void
   enqueue: (t: PlayerTrackRef) => void
+  enqueueMany: (tracks: PlayerTrackRef[]) => void
   clearQueue: () => void
   pause: () => void
   resume: () => void
@@ -66,6 +67,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const lastTimeTick = useRef(0)
   const prefetchedRef = useRef<PrefetchedPlayback | null>(null)
   const prefetchInFlightIdRef = useRef<string | null>(null)
+  const isPlayingRef = useRef(isPlaying)
+  const isLoadingPlaybackRef = useRef(isLoadingPlayback)
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying
+  }, [isPlaying])
+  useEffect(() => {
+    isLoadingPlaybackRef.current = isLoadingPlayback
+  }, [isLoadingPlayback])
 
   const clearPlaybackPrefetch = useCallback(() => {
     prefetchedRef.current = null
@@ -191,7 +201,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (ci2 !== ci || q2[ni]?.id !== nextTrack.id) return
 
         prefetchedRef.current = { trackId: nextTrack.id, url, item }
-      } catch {
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          console.warn('[player] prefetch next failed', e)
+        }
         /* la reproducción siguiente reintentará Graph */
       } finally {
         if (prefetchInFlightIdRef.current === nextTrack.id) {
@@ -240,7 +253,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setCurrentTime(cur)
       void maybePrefetchNext(cur, dur)
     }
-    const onMeta = () => setDuration(Number.isFinite(el.duration) ? el.duration : 0)
+    /** Tras conocer duración: ventana final (pistas cortas) + disparo temprano del siguiente si hay cola. */
+    const onMeta = () => {
+      const dur = Number.isFinite(el.duration) ? el.duration : 0
+      setDuration(dur)
+      void maybePrefetchNext(el.currentTime, el.duration)
+      if (dur > 0) void maybePrefetchNext(dur, dur)
+    }
     const onPlay = () => setIsPlaying(true)
     const onPause = () => setIsPlaying(false)
     const onEnded = () => {
@@ -305,6 +324,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const enqueueMany = useCallback(
+    (tracks: PlayerTrackRef[]) => {
+      if (!tracks.length) return
+      const firstNewIndex = queueRef.current.length
+      setQueue((q) => {
+        const n = [...q, ...tracks]
+        queueRef.current = n
+        return n
+      })
+      const q = queueRef.current
+      if (
+        !isPlayingRef.current &&
+        !isLoadingPlaybackRef.current &&
+        firstNewIndex < q.length
+      ) {
+        void playAtIndex(firstNewIndex, q)
+      }
+    },
+    [playAtIndex],
+  )
+
   const clearQueue = useCallback(() => {
     clearPlaybackPrefetch()
     audioRef.current?.pause()
@@ -339,6 +379,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playSingle,
     playQueue,
     enqueue,
+    enqueueMany,
     clearQueue,
     pause: () => {
       audioRef.current?.pause()

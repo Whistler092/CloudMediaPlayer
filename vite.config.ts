@@ -4,6 +4,10 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    // jsmediatags usa `!process.browser` para cargar lectores Node/RN; sin esto Vite incluye react-native-fs y rompe el build.
+    'process.browser': JSON.stringify(true),
+  },
   plugins: [
     react(),
     VitePWA({

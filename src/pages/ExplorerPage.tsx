@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   setDoc,
   updateDoc,
@@ -17,6 +17,14 @@ import { usePlayer } from '../player/PlayerContext'
 import type { PlayerTrackRef } from '../types/player'
 
 type Crumb = { id: string; name: string }
+
+function formatScanDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return `${s} s`
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return r ? `${m} min ${r} s` : `${m} min`
+}
 
 function ExplorerTableSkeleton() {
   return (
@@ -46,6 +54,7 @@ export function ExplorerPage() {
   const [recursiveScan, setRecursiveScan] = useState(true)
   const [scanning, setScanning] = useState(false)
   const [scanMsg, setScanMsg] = useState('')
+  const [explorerFilter, setExplorerFilter] = useState('')
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -80,6 +89,20 @@ export function ExplorerPage() {
       c = true
     }
   }, [folderId, acquireToken])
+
+  useEffect(() => {
+    setExplorerFilter('')
+  }, [folderId])
+
+  const filteredItems = useMemo(() => {
+    const q = explorerFilter.trim().toLowerCase()
+    if (!q) return items
+    return items.filter((it) => {
+      const name = it.name.toLowerCase()
+      const mime = (it.file?.mimeType ?? '').toLowerCase()
+      return name.includes(q) || mime.includes(q)
+    })
+  }, [items, explorerFilter])
 
   const loadMore = useCallback(async () => {
     if (!folderId || !nextLink) return
@@ -139,8 +162,9 @@ export function ExplorerPage() {
       { merge: true },
     )
     const ac = abortRef.current!
+    const scanWall0 = performance.now()
     try {
-      const { indexedTrackCount } = await scanDriveFolder({
+      const { indexedTrackCount, elapsedMs } = await scanDriveFolder({
         getToken: acquireToken,
         firestore: fb.db,
         firebaseUid,
@@ -155,12 +179,17 @@ export function ExplorerPage() {
         scanStatus: aborted ? 'cancelled' : 'completed',
         indexedTrackCount,
         lastScanCompletedAt: serverTimestamp(),
+        lastScanDurationMs: elapsedMs,
       })
+      setScanMsg(
+        `${indexedTrackCount} pistas — ${aborted ? 'cancelado' : 'listo'} en ${formatScanDuration(elapsedMs)}`,
+      )
     } catch (e) {
       await updateDoc(rootRef, {
         scanStatus: 'error',
         errorMessage: e instanceof Error ? e.message : 'Error desconocido',
         lastScanCompletedAt: serverTimestamp(),
+        lastScanDurationMs: Math.round(performance.now() - scanWall0),
       })
     } finally {
       setScanning(false)
@@ -217,6 +246,23 @@ export function ExplorerPage() {
         )}
       </div>
 
+      <div className="explorer-search">
+        <input
+          type="search"
+          className="input explorer-search-input"
+          placeholder="Buscar en esta carpeta por nombre…"
+          value={explorerFilter}
+          onChange={(e) => setExplorerFilter(e.target.value)}
+          aria-label="Filtrar por nombre o tipo (MIME)"
+          autoComplete="off"
+        />
+        {explorerFilter.trim() && items.length > 0 ? (
+          <p className="muted small explorer-search-meta">
+            {filteredItems.length} de {items.length} visibles
+          </p>
+        ) : null}
+      </div>
+
       {loading && <ExplorerTableSkeleton />}
       {!loading && items.length === 0 && (
         <div className="empty-state">
@@ -225,7 +271,14 @@ export function ExplorerPage() {
           <p>No hay elementos en esta ubicación.</p>
         </div>
       )}
-      {!loading && items.length > 0 && (
+      {!loading && items.length > 0 && filteredItems.length === 0 && (
+        <div className="empty-state">
+          <div className="empty-state-icon">🔎</div>
+          <h2>Sin coincidencias</h2>
+          <p>Ningún nombre coincide con «{explorerFilter.trim()}». Prueba otra búsqueda o pulsa «Cargar más» si faltan elementos por paginar.</p>
+        </div>
+      )}
+      {!loading && filteredItems.length > 0 && (
         <div className="tbl-wrap">
           <table className="tbl">
             <thead>
@@ -236,7 +289,7 @@ export function ExplorerPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((it) => (
+              {filteredItems.map((it) => (
                 <tr key={it.id} className={it.folder ? 'row-folder' : undefined}>
                   <td>
                     {it.folder ? (
