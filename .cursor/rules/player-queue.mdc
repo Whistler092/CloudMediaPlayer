@@ -1,0 +1,24 @@
+---
+description: Cola de reproducción, audio y prefetch Graph
+globs: "src/player/**/*"
+alwaysApply: false
+---
+
+# Reproductor y cola
+
+## API pública (`PlayerContext`)
+
+- `queue`, `currentIndex`, `currentTrack`, `isPlaying`, `isLoadingPlayback`, `currentTime`, `duration`, `error`.
+- `playSingle(t)`: cola = `[t]`; no hay «siguiente» para prefetch.
+- `playQueue(tracks, startIndex?)`, `playQueueIndex`, `enqueue`, `enqueueMany`, `clearQueue`, `next` / `prev`, `seek`, `toggle`.
+
+## Graph y audio
+
+- `resolveUrlAndPlay`: token + `getDriveItem`, asigna `el.src` a `@microsoft.graph.downloadUrl`; usa prefetch si `prefetchedRef.trackId` coincide.
+- **Prefetch siguiente:** `maybePrefetchNext(currentTime, duration)` cuando quedan ≤ `NEXT_TRACK_PREFETCH_LEAD_SEC` (10 s) y existe `queue[index+1]`.
+- En **`loadedmetadata`**: actualizar `duration` y llamar a `maybePrefetchNext` con tiempos reales y, si `duration > 0`, una segunda llamada con `(duration, duration)` para forzar prefetch temprano en colas multi-pista.
+- Errores de prefetch: en desarrollo, `console.warn('[player] prefetch next failed', …)`.
+
+## `PlayerTrackRef`
+
+- `id`, `name`, opcionales `artist`, `album` (metadatos en cola / MediaSession).

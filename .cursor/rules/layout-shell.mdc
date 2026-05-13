@@ -1,0 +1,23 @@
+---
+description: App shell, main vs cola y estilos de página
+globs:
+  - src/routes/AppShell.tsx
+  - src/index.css
+alwaysApply: false
+---
+
+# Layout y shell
+
+## `AppShell.tsx`
+
+- `PlayerProvider` envuelve el chrome.
+- **`app-body`:** sidebar + `app-content` (mobile bar + `main-queue-row`).
+- **`main-queue-row`:** `main` (Outlet) + `PlayerQueuePanel`. En escritorio, separación visual con `column-gap` en `index.css` (no pegar scroll del main al panel de cola).
+
+## Páginas (`index.css`)
+
+- **`.main`:** padding; hijo directo `.page` suele ser flex column con scroll (`overflow-y: auto`) salvo casos especiales (p. ej. explorer).
+- **`.page.library` / `.page.playlist-detail`:** scroll de toda la vista; tablas con wraps dedicados (`playlist-temas-tbl-wrap`, `playlist-picker-tbl-wrap` con `max-height` en picker).
+- **Cola:** clases `queue-panel*`; drawer en móvil.
+
+Cambios de gap/padding entre main y cola: media `min-width: 768px` en `.main-queue-row`.

@@ -1,0 +1,24 @@
+---
+description: UI y datos de playlists (detalle, lista, picker)
+globs: "**/Playlist*.tsx"
+alwaysApply: false
+---
+
+# Playlists — UI y patrones
+
+## Datos
+
+- `PlaylistDoc`: `name`, `orderedTrackIds`, timestamps. Resolución de filas: `getDoc(userLibTrackDoc)` por id; tipo de fila con `name`, `artist`, `album` desde `LibraryTrackDoc.audioArtist` / `audioAlbum`.
+- `rowToTrackRef(Row)` → `PlayerTrackRef` (incluir `artist`/`album` opcionales) para `playQueue` / `playSingle`.
+
+## Detalle (`PlaylistDetailPage`)
+
+- Título editable al clic; guardar nombre con `updateDoc` + `load()`.
+- **Reproducir todo:** botón primario compacto con icono SVG grande (clase `playlist-play-all-icon`).
+- Sección **«Canciones»:** tabla `playlist-temas-tbl` con columnas nombre / artista / álbum; acciones: subir/bajar (async + spinners en la fila mientras `persistIds`), play, quitar (icono papelera + spinner).
+- **Añadir desde biblioteca:** `loadAllIndexedTracks` (progreso), `filterIndexedTracks`, orden sin filtro por `updatedAt`, paginación (p. ej. 10), botón Añadir con estado de carga por fila y bloqueo de doble clic.
+- CSS de página: `playlist-detail-title-row`, `playlist-temas-*`, `playlist-picker-*`; scroll de vista como biblioteca (`overflow-y: auto` en `.page.playlist-detail`).
+
+## Lista (`PlaylistsPage`)
+
+- Listado con `orderBy('updatedAt', 'desc')`, crear y eliminar playlists.

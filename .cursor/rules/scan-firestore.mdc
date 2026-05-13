@@ -1,0 +1,24 @@
+---
+description: Escaneo OneDrive y documentos Firestore de biblioteca
+globs:
+  - src/scan/**/*.ts
+  - src/types/firestore.ts
+  - src/firestore/**/*.ts
+alwaysApply: false
+---
+
+# Escaneo e índice Firestore
+
+## Escaneo (`src/scan/`)
+
+- **`scanDriveFolder`:** recorre Graph según carpeta raíz / recursivo; escribe documentos de pista en Firestore bajo el usuario; actualiza raíz (`LibraryRootDoc`) con estado, conteos, tiempos y errores.
+- Metadatos de audio (p. ej. id3) pueden rellenar `audioArtist`, `audioAlbum`, etc., alineados con `LibraryTrackDoc`.
+
+## Tipos (`src/types/firestore.ts`)
+
+- **`LibraryTrackDoc`:** `name`, `folderPath`, `parentFolderId`, `rootId`, `ext`, campos opcionales de audio y `updatedAt` para orden «recientes».
+- **`PlaylistDoc`:** `name`, `orderedTrackIds` (ids = drive item id almacenado como id de doc de librería).
+
+## Paths
+
+- Centralizar rutas en `src/firestore/paths.ts` (`userLibTracksCol`, `userPlaylistDoc`, …) para no duplicar strings de colección.

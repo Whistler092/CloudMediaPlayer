@@ -1,0 +1,15 @@
+---
+description: Visión general Cloud Media Player (stack, auth, datos)
+alwaysApply: true
+---
+
+# Cloud Media Player — overview
+
+- **Stack:** Vite, React 19, TypeScript, React Router 7, ESLint.
+- **Auth:** MSAL (`ProtectedMsal`, `AppShell`); rutas bajo usuario autenticado.
+- **OneDrive / audio:** Microsoft Graph (`getDriveItem`, URLs de descarga); token con `useGraphAccessToken`.
+- **Persistencia índice y playlists:** Firebase Firestore por `firebaseUid`; rutas en `src/firestore/paths.ts` (`userLibTrackDoc`, `userPlaylistsCol`, etc.).
+- **Reproducción:** un solo `<audio>` en `PlayerProvider`; estado de cola e índice actual en `PlayerContext.tsx`. Panel de cola: `PlayerQueuePanel.tsx`.
+- **PWA:** Vite PWA plugin (service worker en build).
+
+Al tocar reproducción, cola o playlists, revisa también las reglas acotadas (`playlists-ui`, `player-queue`, `layout-shell`). Tras cambios: `npm run build`.

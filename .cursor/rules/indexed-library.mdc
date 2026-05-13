@@ -1,0 +1,20 @@
+---
+description: Biblioteca indexada y búsqueda en cliente
+globs:
+  - src/lib/indexedTrackSearch.ts
+  - src/pages/LibraryPage.tsx
+alwaysApply: false
+---
+
+# Índice y biblioteca
+
+## `indexedTrackSearch.ts`
+
+- **`loadAllIndexedTracks(db, uid, onProgress?)`:** páginas de 500 con `orderBy('name')` y `startAfter` hasta vaciar colección `userLibTracksCol`.
+- **`filterIndexedTracks(rows, filter)`:** coincide por nombre, `folderPath`, `audioArtist`, `audioAlbum` (sin buscar por id de documento).
+
+## `LibraryPage.tsx` (relacionado)
+
+- Carga masiva del índice, filtro en memoria, tabla con acciones reproducir / añadir a cola; paginación UI coherente con el buscador de playlist donde aplique.
+
+Al cambiar campos indexados, mantener alineados `LibraryTrackDoc` en `src/types/firestore.ts` y el escaneo que escribe esos campos.
