@@ -17,20 +17,22 @@ function FirebaseLayout() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route element={<ProtectedMsal />}>
-        <Route element={<FirebaseLayout />}>
-          <Route element={<AppShell />}>
-            <Route path="/" element={<Navigate to="/explorer" replace />} />
-            <Route path="/explorer" element={<ExplorerPage />} />
-            <Route path="/library" element={<LibraryPage />} />
-            <Route path="/playlists" element={<PlaylistsPage />} />
-            <Route path="/playlists/:playlistId" element={<PlaylistDetailPage />} />
+    <div className="app-viewport-fill">
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route element={<ProtectedMsal />}>
+          <Route element={<FirebaseLayout />}>
+            <Route element={<AppShell />}>
+              <Route path="/" element={<Navigate to="/explorer" replace />} />
+              <Route path="/explorer" element={<ExplorerPage />} />
+              <Route path="/library" element={<LibraryPage />} />
+              <Route path="/playlists" element={<PlaylistsPage />} />
+              <Route path="/playlists/:playlistId" element={<PlaylistDetailPage />} />
+            </Route>
           </Route>
         </Route>
-      </Route>
-      <Route path="*" element={<Navigate to="/explorer" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/explorer" replace />} />
+      </Routes>
+    </div>
   )
 }

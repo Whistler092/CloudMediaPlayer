@@ -4,6 +4,8 @@ import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { PlayerProvider } from '../player/PlayerContext'
 import { usePlayer } from '../player/PlayerContext'
 import { PlayerBar } from '../components/PlayerBar'
+import { MobileQueueTrigger, PlayerQueuePanel } from '../components/PlayerQueuePanel'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { isFirebaseConfigured } from '../config/env'
 import { authDebug } from '../debug/msalDebug'
 
@@ -64,7 +66,10 @@ function AppShellChrome() {
   const loc = useLocation()
   const p = usePlayer()
   const hasPlayer = p.queue.length > 0 || !!p.currentTrack
+  const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [mobileQueueOpen, setMobileQueueOpen] = useState(false)
+  const showBottomPlayerBar = hasPlayer && isMobile && !mobileQueueOpen
 
   const logout = () => {
     void instance.logoutPopup({
@@ -92,7 +97,9 @@ function AppShellChrome() {
     instance.getActiveAccount()?.username ?? accounts[0]?.username ?? ''
 
   return (
-    <div className={`app-root ${hasPlayer ? 'app-root--player' : ''}`}>
+    <div
+      className={['app-root', showBottomPlayerBar ? 'app-root--player-bar' : ''].filter(Boolean).join(' ')}
+    >
       <div className="app-body">
         <aside
           id="sidebar-main"
@@ -138,6 +145,7 @@ function AppShellChrome() {
             <Link to="/explorer" className="brand" style={{ fontSize: '1.1rem' }} onClick={() => setSidebarOpen(false)}>
               Cloud Media
             </Link>
+            <MobileQueueTrigger onOpen={() => setMobileQueueOpen(true)} />
           </div>
           {!isFirebaseConfigured() && (
             <div className="banner warn">
@@ -145,12 +153,18 @@ function AppShellChrome() {
               disponibles.
             </div>
           )}
-          <main className="main">
-            <Outlet />
-          </main>
+          <div className="main-queue-row">
+            <main className="main">
+              <Outlet />
+            </main>
+            <PlayerQueuePanel
+              mobileQueueOpen={mobileQueueOpen}
+              onMobileQueueOpenChange={setMobileQueueOpen}
+            />
+          </div>
         </div>
       </div>
-      <PlayerBar />
+      {showBottomPlayerBar ? <PlayerBar /> : null}
     </div>
   )
 }

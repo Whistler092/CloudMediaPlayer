@@ -33,6 +33,7 @@ type Ctx = {
   next: () => void
   prev: () => void
   seek: (seconds: number) => void
+  playQueueIndex: (index: number) => void
 }
 
 const PlayerContext = createContext<Ctx | null>(null)
@@ -220,6 +221,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setDuration(0)
   }, [])
 
+  const playQueueIndex = useCallback(
+    (index: number) => {
+      const q = queueRef.current
+      if (index < 0 || index >= q.length) return
+      void playAtIndex(index, q)
+    },
+    [playAtIndex],
+  )
+
   const value: Ctx = {
     queue,
     currentIndex,
@@ -252,6 +262,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       el.currentTime = Math.max(0, Math.min(seconds, el.duration || seconds))
       setCurrentTime(el.currentTime)
     },
+    playQueueIndex,
   }
 
   return (
