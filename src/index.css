@@ -24,6 +24,10 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
   --sidebar-width: 220px;
   --sidebar-width-collapsed: 0px;
+  /* Escritorio: tope de ancho sidebar / rail colapsado (no usado en móvil drawer) */
+  --sidebar-expanded-max: min(280px, 26vw);
+  --sidebar-rail-width: 56px;
+  --queue-panel-expanded-max: min(400px, 32vw);
   --player-height: 92px;
   --queue-panel-width: clamp(288px, 28vw, 400px);
   --queue-panel-collapsed-width: 64px;
@@ -53,8 +57,9 @@ html {
 
 body {
   margin: 0;
-  min-height: 100%;
   height: 100%;
+  min-height: 100%;
+  overflow: hidden;
   background-color: var(--bg);
   background-image: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(30, 215, 96, 0.06), transparent 50%);
 }
@@ -77,13 +82,28 @@ code {
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Envuelve Routes en App.tsx: encadena altura al viewport para que el scroll sea interno (main/tabla), no en body */
+.app-viewport-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .app-root {
-  min-height: 100vh;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-root--player-bar .main-queue-row {
@@ -98,6 +118,8 @@ code {
   display: flex;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   position: relative;
 }
 
@@ -111,23 +133,67 @@ code {
   flex-direction: column;
   min-height: 0;
   z-index: 40;
+  transition: width 0.2s ease, min-width 0.2s ease, max-width 0.2s ease;
 }
 
 .sidebar-brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-width: 0;
   padding: 1.25rem 1rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .sidebar-brand .brand {
-  font-family: var(--font-display);
-  font-size: 1.35rem;
-  font-weight: 400;
-  letter-spacing: 0.02em;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-ui);
   color: var(--text);
+  line-height: 1.2;
+  text-decoration: none;
 }
 .sidebar-brand .brand:hover {
   color: var(--accent);
   text-decoration: none;
+}
+
+.sidebar-brand-text {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  line-height: 1.25;
+  text-align: left;
+  max-width: 100%;
+}
+
+.sidebar-brand .brand:hover .sidebar-brand-text {
+  color: var(--text);
+}
+
+.brand-logo {
+  display: block;
+  flex-shrink: 0;
+}
+.brand-logo__cloud {
+  fill: color-mix(in srgb, var(--text) 14%, transparent);
+  stroke: color-mix(in srgb, var(--text) 38%, transparent);
+  stroke-width: 0.65;
+}
+.brand:hover .brand-logo__cloud {
+  stroke: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.brand-logo__play {
+  fill: var(--accent);
+}
+.brand:hover .brand-logo__play {
+  fill: var(--accent-hover);
 }
 
 .sidebar-nav {
@@ -139,6 +205,7 @@ code {
 }
 
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -179,8 +246,16 @@ code {
   margin-top: auto;
 }
 
+.sidebar-logout-icon {
+  display: none;
+  flex-shrink: 0;
+}
+
 .sidebar-logout {
-  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
 }
 
 .sidebar-account {
@@ -194,12 +269,30 @@ code {
   display: none;
 }
 
+/* Colapsar sidebar solo escritorio (toggle + rail); móvil sigue con drawer */
+.sidebar-collapse-toggle {
+  display: none;
+  flex-shrink: 0;
+}
+
+.sidebar-brand-short {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
 .app-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .mobile-bar {
@@ -215,6 +308,43 @@ code {
 .mobile-bar .btn-icon {
   min-width: 44px;
   min-height: 44px;
+}
+
+.mobile-bar-brand {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-ui);
+  color: var(--text);
+  text-decoration: none;
+}
+.mobile-bar-brand:hover {
+  color: var(--accent);
+  text-decoration: none;
+}
+.mobile-bar-brand:hover .brand-logo__play {
+  fill: var(--accent-hover);
+}
+.mobile-bar-brand:hover .brand-logo__cloud {
+  stroke: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.mobile-bar-brand-text {
+  min-width: 0;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.mobile-bar-brand:hover .mobile-bar-brand-text {
+  color: var(--text);
 }
 
 @media (max-width: 767px) {
@@ -245,6 +375,114 @@ code {
   }
 }
 
+@media (min-width: 768px) {
+  .sidebar:not(.sidebar--collapsed) {
+    width: clamp(200px, 18vw, var(--sidebar-expanded-max));
+    max-width: var(--sidebar-expanded-max);
+  }
+
+  .sidebar.sidebar--collapsed {
+    width: var(--sidebar-rail-width);
+    min-width: var(--sidebar-rail-width);
+    max-width: var(--sidebar-rail-width);
+    overflow-x: hidden;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar-brand {
+    flex-direction: column;
+    padding: 0.65rem 0.35rem 0.5rem;
+    gap: 0.35rem;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar-brand .brand {
+    flex-direction: column;
+    gap: 0.25rem;
+    align-items: center;
+    width: 100%;
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar-brand-logo {
+    margin: 0 auto;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar-brand-text {
+    display: none;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar-brand-short {
+    display: flex;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar-logout-icon {
+    display: block;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar-collapse-toggle {
+    margin-left: 0;
+  }
+
+  .sidebar.sidebar--collapsed .nav-item {
+    justify-content: center;
+    padding: 0.55rem 0.25rem;
+    gap: 0;
+  }
+
+  .sidebar.sidebar--collapsed .nav-item-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar-account-label {
+    display: none;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar-logout .sidebar-logout-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar-logout {
+    min-width: 0;
+    padding: 0.45rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sidebar-collapse-toggle {
+    display: inline-flex;
+  }
+
+  .sidebar:not(.sidebar--collapsed) .sidebar-brand .brand {
+    order: 1;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sidebar:not(.sidebar--collapsed) .sidebar-collapse-toggle {
+    order: 2;
+    margin-left: auto;
+  }
+
+  .queue-panel.queue-panel--expanded:not(.queue-panel--mobile) {
+    max-width: var(--queue-panel-expanded-max);
+  }
+}
+
 .main {
   flex: 1;
   min-height: 0;
@@ -253,12 +491,10 @@ code {
   display: flex;
   flex-direction: column;
   padding: 1.25rem 1.5rem 2rem;
-  max-width: 1200px;
   width: 100%;
-  margin: 0 auto;
 }
 
-/* Outlet pages: use remaining height; tables scroll inside .tbl-wrap */
+/* Outlet pages: la columna central hace scroll (Biblioteca entera; Explorador/Detalle tabla interna) */
 .main > .page {
   flex: 1;
   min-height: 0;
@@ -267,10 +503,16 @@ code {
   overflow-y: auto;
 }
 
-.page.library,
 .page.explorer,
 .page.playlist-detail {
   overflow: hidden;
+}
+
+/* Biblioteca: scroll de toda la vista (cabecera + filtros + tabla), no solo la tabla */
+.page.library {
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 /* Playlists: lista con altura natural; la página hace scroll si hay muchas entradas */
@@ -286,12 +528,17 @@ code {
   flex-shrink: 0;
 }
 
-.page.library > .tbl-wrap,
 .page.explorer > .tbl-wrap,
 .page.playlist-detail > .tbl-wrap {
   flex: 1 1 0%;
   min-height: 0;
   overflow: auto;
+}
+
+.page.library > .tbl-wrap {
+  flex: 0 0 auto;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .page.playlists > * {
@@ -306,6 +553,7 @@ code {
   min-height: 0;
   min-width: 0;
   align-items: stretch;
+  overflow: hidden;
 }
 
 .queue-panel-scrim {
@@ -597,6 +845,17 @@ code {
   border-color: rgba(30, 215, 96, 0.25);
 }
 
+.queue-panel-row:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.queue-panel-row:disabled:hover {
+  background: transparent;
+}
+.queue-panel-row.active:disabled {
+  background: rgba(30, 215, 96, 0.06);
+}
+
 .queue-panel-row-idx {
   font-size: 0.72rem;
   color: var(--text-muted);
@@ -756,11 +1015,18 @@ code {
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
 }
-.login-page h1 {
+.login-page-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin: 0 0 0.75rem;
+}
+.login-page-heading h1 {
   font-family: var(--font-display);
   font-weight: 400;
   font-size: 1.75rem;
-  margin: 0 0 0.75rem;
+  margin: 0;
+  line-height: 1.2;
 }
 .login-page .btn.primary {
   width: 100%;
@@ -1153,6 +1419,42 @@ code {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   min-width: 2.25rem;
+}
+
+.player-seek input[type='range']:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.player-transport-loading-hint {
+  margin: 0;
+  text-align: center;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.player-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: player-spinner-rot 0.65s linear infinite;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
+.queue-panel-slim-btn .player-spinner {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+@keyframes player-spinner-rot {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .player-bar.player-bar--compact {

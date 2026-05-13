@@ -41,22 +41,27 @@ function IconPlay() {
   )
 }
 
+function IconSpinner() {
+  return <span className="player-spinner" aria-hidden />
+}
+
 export function PlayerTransport({ variant }: { variant: PlayerTransportVariant }) {
   const p = usePlayer()
   if (!p.currentTrack && p.queue.length === 0) return null
 
+  const busy = p.isLoadingPlayback
   const rootClass =
     variant === 'panel' ? 'player-transport player-transport--panel' : 'player-transport player-transport--bar'
 
   return (
-    <div className={rootClass} aria-label="Controles de reproducción">
+    <div className={rootClass} aria-label="Controles de reproducción" aria-busy={busy}>
       {variant === 'panel' ? (
         <div className="player-zone player-zone--controls player-zone--controls--panel-icons">
           <button
             type="button"
             className="btn-icon queue-panel-transport-icon"
             onClick={() => p.prev()}
-            disabled={p.currentIndex <= 0}
+            disabled={busy || p.currentIndex <= 0}
             aria-label="Anterior"
           >
             <IconPrev />
@@ -65,15 +70,16 @@ export function PlayerTransport({ variant }: { variant: PlayerTransportVariant }
             type="button"
             className="btn-icon queue-panel-transport-icon queue-panel-transport-icon--play"
             onClick={() => p.toggle()}
-            aria-label={p.isPlaying ? 'Pausa' : 'Reproducir'}
+            disabled={busy}
+            aria-label={busy ? 'Preparando reproducción' : p.isPlaying ? 'Pausa' : 'Reproducir'}
           >
-            {p.isPlaying ? <IconPause /> : <IconPlay />}
+            {busy ? <IconSpinner /> : p.isPlaying ? <IconPause /> : <IconPlay />}
           </button>
           <button
             type="button"
             className="btn-icon queue-panel-transport-icon"
             onClick={() => p.next()}
-            disabled={p.currentIndex >= p.queue.length - 1}
+            disabled={busy || p.currentIndex >= p.queue.length - 1}
             aria-label="Siguiente"
           >
             <IconNext />
@@ -81,23 +87,40 @@ export function PlayerTransport({ variant }: { variant: PlayerTransportVariant }
         </div>
       ) : (
         <div className="player-zone player-zone--controls">
-          <button type="button" className="btn sm" onClick={() => p.prev()} disabled={p.currentIndex <= 0} aria-label="Anterior">
+          <button
+            type="button"
+            className="btn sm"
+            onClick={() => p.prev()}
+            disabled={busy || p.currentIndex <= 0}
+            aria-label="Anterior"
+          >
             Ant.
           </button>
-          <button type="button" className="btn primary sm" onClick={() => p.toggle()} aria-label={p.isPlaying ? 'Pausa' : 'Reproducir'}>
-            {p.isPlaying ? 'Pausa' : 'Reproducir'}
+          <button
+            type="button"
+            className="btn primary sm"
+            onClick={() => p.toggle()}
+            disabled={busy}
+            aria-label={busy ? 'Preparando reproducción' : p.isPlaying ? 'Pausa' : 'Reproducir'}
+          >
+            {busy ? '…' : p.isPlaying ? 'Pausa' : 'Reproducir'}
           </button>
           <button
             type="button"
             className="btn sm"
             onClick={() => p.next()}
-            disabled={p.currentIndex >= p.queue.length - 1}
+            disabled={busy || p.currentIndex >= p.queue.length - 1}
             aria-label="Siguiente"
           >
             Sig.
           </button>
         </div>
       )}
+      {busy ? (
+        <p className="player-transport-loading-hint muted small" aria-live="polite">
+          Obteniendo audio desde OneDrive…
+        </p>
+      ) : null}
       <div className="player-seek">
         <span className="time">{formatTime(p.currentTime)}</span>
         <input
@@ -107,6 +130,7 @@ export function PlayerTransport({ variant }: { variant: PlayerTransportVariant }
           step={0.1}
           value={Math.min(p.currentTime, Math.max(1e-6, p.duration || 0))}
           onChange={(e) => p.seek(Number(e.target.value))}
+          disabled={busy}
           aria-label="Progreso de reproducción"
         />
         <span className="time">{formatTime(p.duration)}</span>

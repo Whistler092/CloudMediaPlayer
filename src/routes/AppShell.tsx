@@ -1,8 +1,9 @@
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { PlayerProvider } from '../player/PlayerContext'
 import { usePlayer } from '../player/PlayerContext'
+import { BrandLogo } from '../components/BrandLogo'
 import { PlayerBar } from '../components/PlayerBar'
 import { MobileQueueTrigger, PlayerQueuePanel } from '../components/PlayerQueuePanel'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -41,6 +42,48 @@ function IconMenu() {
   )
 }
 
+function IconChevronDoubleLeft() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M11 18l-6-6 6-6M18 18l-6-6 6-6" />
+    </svg>
+  )
+}
+
+function IconChevronDoubleRight() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M13 18l6-6-6-6M6 18l6-6-6-6" />
+    </svg>
+  )
+}
+
+function IconLogout() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+    </svg>
+  )
+}
+
+const LS_SIDEBAR_COLLAPSED = 'sidebarNavCollapsed'
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(LS_SIDEBAR_COLLAPSED) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeSidebarCollapsed(collapsed: boolean) {
+  try {
+    localStorage.setItem(LS_SIDEBAR_COLLAPSED, collapsed ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+}
+
 export function ProtectedMsal() {
   const isAuthenticated = useIsAuthenticated()
   const { accounts, instance } = useMsal()
@@ -69,7 +112,20 @@ function AppShellChrome() {
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mobileQueueOpen, setMobileQueueOpen] = useState(false)
+  const [sidebarNavCollapsed, setSidebarNavCollapsed] = useState(() => readSidebarCollapsed())
   const showBottomPlayerBar = hasPlayer && isMobile && !mobileQueueOpen
+
+  const setSidebarCollapsedPersist = useCallback((collapsed: boolean) => {
+    setSidebarNavCollapsed(collapsed)
+    writeSidebarCollapsed(collapsed)
+  }, [])
+
+  useEffect(() => {
+    if (!isMobile) return
+    queueMicrotask(() => {
+      setSidebarOpen(false)
+    })
+  }, [isMobile])
 
   const logout = () => {
     void instance.logoutPopup({
@@ -88,7 +144,7 @@ function AppShellChrome() {
         onClick={() => setSidebarOpen(false)}
       >
         {icon}
-        {label}
+        <span className="nav-item-label">{label}</span>
       </Link>
     )
   }
@@ -103,23 +159,51 @@ function AppShellChrome() {
       <div className="app-body">
         <aside
           id="sidebar-main"
-          className={`sidebar ${sidebarOpen ? 'sidebar--open' : ''}`}
+          className={[
+            'sidebar',
+            sidebarOpen ? 'sidebar--open' : '',
+            !isMobile && sidebarNavCollapsed ? 'sidebar--collapsed' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
           aria-label="Navegación principal"
         >
           <div className="sidebar-brand">
+            {!isMobile ? (
+              <button
+                type="button"
+                className="btn-icon sidebar-collapse-toggle"
+                onClick={() => setSidebarCollapsedPersist(!sidebarNavCollapsed)}
+                aria-expanded={!sidebarNavCollapsed}
+                aria-controls="sidebar-main-nav"
+                title={sidebarNavCollapsed ? 'Expandir menú' : 'Contraer menú'}
+              >
+                {sidebarNavCollapsed ? <IconChevronDoubleRight /> : <IconChevronDoubleLeft />}
+              </button>
+            ) : null}
             <Link to="/explorer" className="brand" onClick={() => setSidebarOpen(false)}>
-              Cloud Media
+              <BrandLogo
+                size={!isMobile && sidebarNavCollapsed ? 32 : 30}
+                className="sidebar-brand-logo"
+              />
+              <span className="sidebar-brand-text">Cloud Media Player</span>
+              <span className="sidebar-brand-short">CM</span>
             </Link>
           </div>
-          <nav className="sidebar-nav">
+          <nav id="sidebar-main-nav" className="sidebar-nav" aria-label="Secciones">
             {nav('/explorer', 'Explorador', <IconExplorer />)}
             {nav('/library', 'Biblioteca', <IconLibrary />)}
             {nav('/playlists', 'Playlists', <IconPlaylists />, '/playlists')}
           </nav>
           <div className="sidebar-footer">
-            {accountLabel ? <div className="sidebar-account">{accountLabel}</div> : null}
-            <button type="button" className="btn ghost sm sidebar-logout" onClick={() => logout()}>
-              Cerrar sesión
+            {accountLabel ? (
+              <div className="sidebar-account">
+                <span className="sidebar-account-label">{accountLabel}</span>
+              </div>
+            ) : null}
+            <button type="button" className="btn ghost sm sidebar-logout" onClick={() => logout()} title="Cerrar sesión">
+              <IconLogout />
+              <span className="sidebar-logout-label">Cerrar sesión</span>
             </button>
           </div>
         </aside>
@@ -142,8 +226,9 @@ function AppShellChrome() {
             >
               <IconMenu />
             </button>
-            <Link to="/explorer" className="brand" style={{ fontSize: '1.1rem' }} onClick={() => setSidebarOpen(false)}>
-              Cloud Media
+            <Link to="/explorer" className="brand mobile-bar-brand" onClick={() => setSidebarOpen(false)}>
+              <BrandLogo size={24} />
+              <span className="mobile-bar-brand-text">Cloud Media Player</span>
             </Link>
             <MobileQueueTrigger onOpen={() => setMobileQueueOpen(true)} />
           </div>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { loginRequest } from '../auth/msalInstance'
 import { authDebug } from '../debug/msalDebug'
+import { BrandLogo } from '../components/BrandLogo'
 
 export function LoginPage() {
   const { instance, accounts } = useMsal()
@@ -29,7 +30,10 @@ export function LoginPage() {
   return (
     <div className="login-layout">
       <div className="login-page">
-        <h1>Cloud Media Player</h1>
+        <div className="login-page-heading">
+          <BrandLogo size={44} />
+          <h1>Cloud Media Player</h1>
+        </div>
         <p className="page-lead" style={{ marginTop: 0 }}>
           Inicia sesión con Microsoft para acceder a OneDrive y reproducir tu música.
         </p>

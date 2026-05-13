@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import type { GraphDriveItem } from '../api/graphTypes'
 import { getDriveItem } from '../api/graphClient'
 import { useGraphAccessToken } from '../hooks/useGraphAccessToken'
 import type { PlayerTrackRef } from '../types/player'
@@ -15,11 +16,22 @@ import type { PlayerTrackRef } from '../types/player'
 
 export type { PlayerTrackRef } from '../types/player'
 
+/** Segundos antes del final en los que se pide la siguiente pista a Graph (si hay siguiente en cola). */
+const NEXT_TRACK_PREFETCH_LEAD_SEC = 10
+
+type PrefetchedPlayback = {
+  trackId: string
+  url: string
+  item: GraphDriveItem
+}
+
 type Ctx = {
   queue: PlayerTrackRef[]
   currentIndex: number
   currentTrack: PlayerTrackRef | null
   isPlaying: boolean
+  /** True mientras se obtiene token, URL de Graph y el audio está listo para `play()`. */
+  isLoadingPlayback: boolean
   currentTime: number
   duration: number
   error: string | null
@@ -47,10 +59,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<PlayerTrackRef[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [isLoadingPlayback, setIsLoadingPlayback] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const lastTimeTick = useRef(0)
+  const prefetchedRef = useRef<PrefetchedPlayback | null>(null)
+  const prefetchInFlightIdRef = useRef<string | null>(null)
+
+  const clearPlaybackPrefetch = useCallback(() => {
+    prefetchedRef.current = null
+    prefetchInFlightIdRef.current = null
+  }, [])
 
   useEffect(() => {
     queueRef.current = queue
@@ -64,48 +84,118 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       ? queue[currentIndex]!
       : null
 
+  /** Si la cola o el índice cambian y el “siguiente” ya no coincide, descartar prefetch. */
+  useEffect(() => {
+    const next = queue[currentIndex + 1]
+    const pid = prefetchedRef.current?.trackId
+    if (!pid) return
+    if (!next || next.id !== pid) {
+      prefetchedRef.current = null
+    }
+  }, [queue, currentIndex])
+
   const resolveUrlAndPlay = useCallback(
     async (track: PlayerTrackRef) => {
       const el = audioRef.current
       if (!el) return
+
+      const snap = prefetchedRef.current
+      let fromPrefetch: PrefetchedPlayback | null = null
+      if (snap?.trackId === track.id) {
+        fromPrefetch = snap
+        prefetchedRef.current = null
+      } else if (snap) {
+        prefetchedRef.current = null
+      }
+      prefetchInFlightIdRef.current = null
+
+      setIsLoadingPlayback(true)
       setError(null)
-      const token = await acquireToken()
-      const item = await getDriveItem(token, track.id)
-      const url = item['@microsoft.graph.downloadUrl']
-      if (!url) {
-        setError('No hay URL de descarga para este archivo (Graph).')
-        return
-      }
-      el.src = url
-      if (item.audio?.title || item.audio?.artist) {
-        try {
-          navigator.mediaSession.metadata = new MediaMetadata({
-            title: item.audio.title ?? track.name,
-            artist: item.audio.artist ?? track.artist ?? '',
-            album: item.audio.album ?? track.album ?? '',
-          })
-        } catch {
-          /* ignore */
-        }
-      } else {
-        try {
-          navigator.mediaSession.metadata = new MediaMetadata({
-            title: track.name,
-            artist: track.artist ?? '',
-            album: track.album ?? '',
-          })
-        } catch {
-          /* ignore */
-        }
-      }
       try {
-        await el.play()
-        setIsPlaying(true)
-      } catch (e) {
-        if (e instanceof Error && e.name === 'NotAllowedError') {
-          setError('El navegador bloqueó la reproducción automática; pulsa Reproducir.')
+        let item: GraphDriveItem
+        let url: string
+        if (fromPrefetch) {
+          item = fromPrefetch.item
+          url = fromPrefetch.url
         } else {
-          setError(e instanceof Error ? e.message : 'Error al reproducir')
+          const token = await acquireToken()
+          item = await getDriveItem(token, track.id)
+          url = item['@microsoft.graph.downloadUrl'] ?? ''
+        }
+        if (!url) {
+          setError('No hay URL de descarga para este archivo (Graph).')
+          return
+        }
+        el.src = url
+        if (item.audio?.title || item.audio?.artist) {
+          try {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: item.audio.title ?? track.name,
+              artist: item.audio.artist ?? track.artist ?? '',
+              album: item.audio.album ?? track.album ?? '',
+            })
+          } catch {
+            /* ignore */
+          }
+        } else {
+          try {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: track.name,
+              artist: track.artist ?? '',
+              album: track.album ?? '',
+            })
+          } catch {
+            /* ignore */
+          }
+        }
+        try {
+          await el.play()
+          setIsPlaying(true)
+        } catch (e) {
+          if (e instanceof Error && e.name === 'NotAllowedError') {
+            setError('El navegador bloqueó la reproducción automática; pulsa Reproducir.')
+          } else {
+            setError(e instanceof Error ? e.message : 'Error al reproducir')
+          }
+        }
+      } finally {
+        setIsLoadingPlayback(false)
+      }
+    },
+    [acquireToken],
+  )
+
+  const maybePrefetchNext = useCallback(
+    async (audioCurrentTime: number, audioDuration: number) => {
+      if (!Number.isFinite(audioDuration) || audioDuration <= 0) return
+      const remaining = audioDuration - audioCurrentTime
+      if (remaining > NEXT_TRACK_PREFETCH_LEAD_SEC) return
+
+      const q = queueRef.current
+      const ci = indexRef.current
+      const ni = ci + 1
+      if (ni >= q.length) return
+      const nextTrack = q[ni]!
+      if (prefetchedRef.current?.trackId === nextTrack.id) return
+      if (prefetchInFlightIdRef.current === nextTrack.id) return
+
+      prefetchInFlightIdRef.current = nextTrack.id
+      try {
+        const token = await acquireToken()
+        const item = await getDriveItem(token, nextTrack.id)
+        const url = item['@microsoft.graph.downloadUrl']
+        if (!url) return
+
+        const q2 = queueRef.current
+        const ci2 = indexRef.current
+        if (ci2 !== ci || q2[ni]?.id !== nextTrack.id) return
+
+        prefetchedRef.current = { trackId: nextTrack.id, url, item }
+      } catch {
+        /* la reproducción siguiente reintentará Graph */
+      } finally {
+        if (prefetchInFlightIdRef.current === nextTrack.id) {
+          prefetchInFlightIdRef.current = null
         }
       }
     },
@@ -145,7 +235,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const now = performance.now()
       if (now - lastTimeTick.current < 120) return
       lastTimeTick.current = now
-      setCurrentTime(el.currentTime)
+      const cur = el.currentTime
+      const dur = el.duration
+      setCurrentTime(cur)
+      void maybePrefetchNext(cur, dur)
     }
     const onMeta = () => setDuration(Number.isFinite(el.duration) ? el.duration : 0)
     const onPlay = () => setIsPlaying(true)
@@ -176,22 +269,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       el.removeEventListener('ended', onEnded)
       el.removeEventListener('error', onError)
     }
-  }, [goNext, resolveUrlAndPlay])
+  }, [goNext, resolveUrlAndPlay, maybePrefetchNext])
 
   const playSingle = useCallback(
     (t: PlayerTrackRef) => {
+      clearPlaybackPrefetch()
       queueRef.current = [t]
       setQueue([t])
       indexRef.current = 0
       setCurrentIndex(0)
       void resolveUrlAndPlay(t)
     },
-    [resolveUrlAndPlay],
+    [resolveUrlAndPlay, clearPlaybackPrefetch],
   )
 
   const playQueue = useCallback(
     (tracks: PlayerTrackRef[], startIndex = 0) => {
       if (!tracks.length) return
+      clearPlaybackPrefetch()
       queueRef.current = tracks
       setQueue(tracks)
       const i = Math.min(Math.max(0, startIndex), tracks.length - 1)
@@ -199,7 +294,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setCurrentIndex(i)
       void playAtIndex(i, tracks)
     },
-    [playAtIndex],
+    [playAtIndex, clearPlaybackPrefetch],
   )
 
   const enqueue = useCallback((t: PlayerTrackRef) => {
@@ -211,15 +306,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const clearQueue = useCallback(() => {
+    clearPlaybackPrefetch()
     audioRef.current?.pause()
     queueRef.current = []
     setQueue([])
     indexRef.current = 0
     setCurrentIndex(0)
     setIsPlaying(false)
+    setIsLoadingPlayback(false)
     setCurrentTime(0)
     setDuration(0)
-  }, [])
+  }, [clearPlaybackPrefetch])
 
   const playQueueIndex = useCallback(
     (index: number) => {
@@ -235,6 +332,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     currentIndex,
     currentTrack,
     isPlaying,
+    isLoadingPlayback,
     currentTime,
     duration,
     error,

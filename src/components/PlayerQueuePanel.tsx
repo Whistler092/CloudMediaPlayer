@@ -79,7 +79,8 @@ export function PlayerQueuePanel({ mobileQueueOpen, onMobileQueueOpenChange }: P
   }, [expanded, isMobile, mobileQueueOpen, onMobileQueueOpenChange, setExpandedPersist])
 
   const showFullPanel = isMobile ? mobileQueueOpen : expanded
-  const showSlimRail = !isMobile && !expanded && p.isPlaying && !!p.currentTrack
+  const showSlimRail =
+    !isMobile && !expanded && (p.isPlaying || p.isLoadingPlayback) && !!p.currentTrack
   const showIconRail = !isMobile && !expanded && !showSlimRail
 
   const asideClass = [
@@ -180,6 +181,7 @@ export function PlayerQueuePanel({ mobileQueueOpen, onMobileQueueOpenChange }: P
                           role="option"
                           className={active ? 'queue-panel-row active' : 'queue-panel-row'}
                           aria-current={active ? 'true' : undefined}
+                          disabled={p.isLoadingPlayback}
                           onClick={() => {
                             p.playQueueIndex(i)
                             if (isMobile) closeMobileDrawer()
@@ -223,7 +225,7 @@ export function PlayerQueuePanel({ mobileQueueOpen, onMobileQueueOpenChange }: P
                 type="button"
                 className="btn-icon queue-panel-slim-btn"
                 onClick={() => p.prev()}
-                disabled={p.currentIndex <= 0}
+                disabled={p.isLoadingPlayback || p.currentIndex <= 0}
                 aria-label="Anterior"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -234,9 +236,12 @@ export function PlayerQueuePanel({ mobileQueueOpen, onMobileQueueOpenChange }: P
                 type="button"
                 className="btn-icon queue-panel-slim-btn queue-panel-slim-btn--play"
                 onClick={() => p.toggle()}
-                aria-label={p.isPlaying ? 'Pausa' : 'Reproducir'}
+                disabled={p.isLoadingPlayback}
+                aria-label={p.isLoadingPlayback ? 'Preparando reproducción' : p.isPlaying ? 'Pausa' : 'Reproducir'}
               >
-                {p.isPlaying ? (
+                {p.isLoadingPlayback ? (
+                  <span className="player-spinner" aria-hidden />
+                ) : p.isPlaying ? (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                     <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
                   </svg>
@@ -250,7 +255,7 @@ export function PlayerQueuePanel({ mobileQueueOpen, onMobileQueueOpenChange }: P
                 type="button"
                 className="btn-icon queue-panel-slim-btn"
                 onClick={() => p.next()}
-                disabled={p.currentIndex >= p.queue.length - 1}
+                disabled={p.isLoadingPlayback || p.currentIndex >= p.queue.length - 1}
                 aria-label="Siguiente"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
